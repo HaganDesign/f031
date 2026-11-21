@@ -90,12 +90,12 @@ async function open_(){ $("lockScreen").hidden=true; $("app").hidden=false; setS
   catch(e){ failed(e); } }
 $("sAdGo").addEventListener("click",async()=>{ const pw=$("sAdPw").value; if(!pw) return;
   const h=await adminHash(pw); if(h!==CFG.admin.hash) return say($("sAdMsg"),"bad","That isn't the admin password.");
-  adminOK=true; $("sAdPw").value=""; say($("sAdMsg")); if($("sAdKeep").checked) LS.set("f031admin",h); adminView(); renderSetup(); });
+  adminOK=true; $("sAdPw").value=""; hidePw(); say($("sAdMsg")); if($("sAdKeep").checked) LS.set("f031admin",h); adminView(); renderSetup(); });
 $("sAdPw").addEventListener("keydown",e=>{ if(e.key==="Enter") $("sAdGo").click(); });
 $("sAdLock").addEventListener("click",()=>{ adminOK=false; LS.del("f031admin"); adminView(); say($("sMsg")); });
 $("lkGo").addEventListener("click",async()=>{ const pw=$("lkPw").value; if(!pw) return;
   try{ TOKEN=await unlockToken(pw); }catch(e){ return say($("lkMsg"),"bad","That isn't the shop password."); }
-  if($("lkRemember").checked) LS.set("f031token",TOKEN); $("lkPw").value=""; open_(); });
+  if($("lkRemember").checked) LS.set("f031token",TOKEN); $("lkPw").value=""; hidePw(); open_(); });
 $("lkPw").addEventListener("keydown",e=>{ if(e.key==="Enter") $("lkGo").click(); });
 $("sForget").addEventListener("click",()=>{ LS.del("f031token"); TOKEN=null; showLock("Signed out on this device."); });
 
@@ -279,7 +279,14 @@ $("sCalcSet").addEventListener("change",async e=>{ const f=e.target.files&&e.tar
 
 function renderAll(){ showBrand(); renderEntry(); renderRecords(); renderSetup(); }
 
+const hidePw=()=>document.querySelectorAll(".pwwrap").forEach(w=>{ const i=w.querySelector("input"), b=w.querySelector("button"); i.type="password"; b.textContent="Show"; b.setAttribute("aria-label","Show password"); });
 // ---------- start ----------
+// a Show / Hide button beside every password box, so it can be checked before tapping on
+document.querySelectorAll('input[type="password"]').forEach(inp=>{ const w=document.createElement("span"); w.className="pwwrap";
+  inp.parentNode.insertBefore(w,inp); w.appendChild(inp); const b=document.createElement("button"); b.type="button"; b.className="pwbtn"; b.textContent="Show"; b.setAttribute("aria-label","Show password");
+  b.addEventListener("click",()=>{ const show=inp.type==="password"; inp.type=show?"text":"password"; b.textContent=show?"Hide":"Show"; b.setAttribute("aria-label",(show?"Hide":"Show")+" password"); inp.focus(); });
+  w.appendChild(b); });
+
 document.addEventListener("visibilitychange",()=>{ if(document.visibilityState==="visible") refresh(true); });   // back to the page: pick up others' entries
 if(!CFG||!CFG.lock) { document.body.innerHTML='<div class="lock"><h2>Not set up yet</h2><p class="hint">config.js is missing. Make it with the F-031 setup page and put it next to this page.</p></div>'; }
 else { adminOK=!CFG.admin||LS.get("f031admin")===CFG.admin.hash; TOKEN=LS.get("f031token"); if(TOKEN) open_(); else showLock(); }

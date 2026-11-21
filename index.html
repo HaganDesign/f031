@@ -7,6 +7,7 @@
 <style>
 :root{--ink:#1d2228;--soft:#5b6570;--line:#d5dbe1;--bg:#f3f5f7;--card:#fff;--acc:#1f5f99;--bad:#a30015;--good:#1e6b3a;--warn:#8a5a00}
 *{box-sizing:border-box}
+[hidden]{display:none!important}
 body{margin:0;font:16px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;color:var(--ink);background:var(--bg)}
 header.top{background:var(--card);border-bottom:1px solid var(--line);padding:12px 16px}
 header.top h1{margin:0;font-size:18px}
@@ -77,6 +78,8 @@ table.log th{font-size:12px;color:var(--soft);text-transform:uppercase;letter-sp
 .status{font-size:13px;color:var(--soft);margin:6px 16px 0;max-width:820px}
 .status b{color:var(--ink)}
 .busy{opacity:.6;pointer-events:none}
+.pwwrap{display:flex;gap:6px;align-items:stretch}.pwwrap input{flex:1;min-width:0}
+.pwbtn{flex:0 0 auto;padding:0 14px;font-size:14px;font-weight:600;border:1px solid #b9c3cf;border-radius:6px;background:#fff;color:#1f5f99;cursor:pointer;min-height:44px;margin:0}
 </style>
 
 <script src="config.js"></script>
