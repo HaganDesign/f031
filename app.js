@@ -15,7 +15,7 @@ const LS={get:k=>{try{return localStorage.getItem(k)}catch(e){return null}},set:
 const CFG=window.F031_CONFIG||null;
 
 // ---------- the shared log ----------
-function blank(){ return {app:APP,v:1,machines:[],options:["Filters changed"],others:[],form:"F-031",rev:"-",entries:[],deleted:[]}; }
+function blank(){ return {app:APP,v:1,company:"",logo:"",machines:[],options:["Filters changed"],others:[],form:"F-031",rev:"-",entries:[],deleted:[]}; }
 let D=blank(), SHA=null, TOKEN=null;
 const mySign=()=>LS.get("f031sign")||"";
 const hrs=v=>{ const m=/^\s*(\d+(?:\.\d+)?)(?::(\d{1,2}))?\s*$/.exec(String(v??"")); return m?(+m[1])+(m[2]?+m[2]/60:0):NaN; };
@@ -83,7 +83,7 @@ async function adminHash(pw){ const A=CFG.admin, u=s=>Uint8Array.from(atob(s),c=
   const bits=new Uint8Array(await crypto.subtle.deriveBits({name:"PBKDF2",salt:u(A.salt),iterations:A.iter,hash:"SHA-256"},base,256));
   return btoa(String.fromCharCode(...bits)); }
 function adminView(){ $("sAdminLock").hidden=adminOK; $("sAdmin").hidden=!adminOK; document.querySelectorAll(".adminOnly").forEach(e=>e.hidden=!adminOK); }
-function showLock(msg){ $("app").hidden=true; $("lockScreen").hidden=false; say($("lkMsg"),msg?"warn":"",msg||""); setTimeout(()=>$("lkPw").focus(),50); }
+function showLock(msg){ try{ const c=JSON.parse(LS.get("f031brand")||"null"); if(c&&!TOKEN){ const k=D; D=Object.assign(blank(),c); showBrand(); D=k; } }catch(e){} $("app").hidden=true; $("lockScreen").hidden=false; say($("lkMsg"),msg?"warn":"",msg||""); setTimeout(()=>$("lkPw").focus(),50); }
 async function open_(){ $("lockScreen").hidden=true; $("app").hidden=false; setSync("Loading the log...");
   try{ const {d,sha}=await pull(); D=d; SHA=sha; setSync(); renderAll(); pickFromLink();
     if(!D.machines.length){ document.querySelector('nav button[data-tab="setup"]').click(); say($("sMsg"),"warn",adminOK?"First time here: add your machines, then go to New entry.":"No machines yet. Unlock settings with the admin password to add them."); } }
@@ -214,7 +214,8 @@ function renderSetup(){
   $("sMach").innerHTML=D.machines.map((m,i)=>`<div class="item">${ud("m",i,D.machines.length)}<input data-mi="${i}" value="${esc(m.name)}" aria-label="Machine name"><button type="button" class="btn danger small" data-mdel="${i}">Remove</button></div>`).join("")||`<p class="hint">No machines yet.</p>`;
   const blist=(k,a,other)=>a.map((o,i)=>`<div class="item">${ud(k,i,a.length)}<input data-bi="${k},${i}" value="${esc(o)}" aria-label="Button text"><button type="button" class="btn alt small" data-bmv="${k},${i}">${other?"To Filter":"To Other"}</button><button type="button" class="btn danger small" data-bdel="${k},${i}" aria-label="Remove">&#10005;</button></div>`).join("")||`<p class="hint">No buttons yet.</p>`;
   $("sOpt").innerHTML=blist("o",D.options,false); $("sOth").innerHTML=blist("t",D.others||[],true);
-  $("sSign").value=mySign(); $("sForm").value=D.form; $("sRev").value=D.rev;
+  $("sSign").value=mySign(); $("sForm").value=D.form; $("sRev").value=D.rev; $("sCo").value=D.company||"";
+  $("sLogoClear").hidden=!D.logo; $("sLogoPrev").innerHTML=D.logo?`<img src="${D.logo}" alt="Current logo"><span class="hint">Current logo</span>`:`<span class="hint">No logo yet. PNG with a transparent background looks best.</span>`;
   $("formLine").textContent=`${D.form||"F-031"} Rev ${D.rev||"-"}`;
   const arr=(d,k)=>k==="m"?d.machines:k==="o"?d.options:(d.others=d.others||[]);
   // changes go by name or id, not position, so they still land right if another device changed the lists meanwhile
@@ -257,7 +258,26 @@ $("sQr").addEventListener("click",()=>{ if(!adminOK) return;
 function pickFromLink(){ const m=new URLSearchParams(location.search).get("m"); if(!m||editId) return;
   const x=D.machines.find(q=>q.id===m); if(!x) return; LS.set("f031mach",x.id); $("eMach").value=x.id; $("rMach").value=x.id; renderEntry(); renderRecords(); }
 
-function renderAll(){ renderEntry(); renderRecords(); renderSetup(); }
+// ---------- company name and logo (shared, admin only; cached so the lock screen can show it too) ----------
+function showBrand(){ const co=(D.company||"").trim(), lg=D.logo||"";
+  [["coBrand","coLogo","coName"],["lkBrand","lkLogo","lkCo"]].forEach(([b,i,n])=>{ $(n).textContent=co; $(n).hidden=!co; $(i).hidden=!lg; if(lg) $(i).src=lg; else $(i).removeAttribute("src"); $(b).hidden=!co&&!lg; });
+  if(TOKEN) LS.set("f031brand",JSON.stringify({company:co,logo:lg})); }
+function setBrand(patch,msg){ if(!adminOK) return; commit(d=>{ Object.assign(d,patch); },msg); }
+$("sCo").addEventListener("change",()=>setBrand({company:$("sCo").value.trim()},"Setup: company name"));
+$("sLogoClear").addEventListener("click",()=>setBrand({logo:""},"Setup: remove logo"));
+$("sLogoFile").addEventListener("change",e=>{ const f=e.target.files&&e.target.files[0]; e.target.value=""; if(!f||!adminOK) return;
+  const rd=new FileReader(); rd.onload=()=>{ const im=new Image();
+    im.onload=()=>{ const sc=Math.min(1,160/(im.naturalHeight||160),640/(im.naturalWidth||640)), cw=Math.max(1,Math.round((im.naturalWidth||640)*sc)), ch=Math.max(1,Math.round((im.naturalHeight||160)*sc));
+      const c=document.createElement("canvas"); c.width=cw; c.height=ch; c.getContext("2d").drawImage(im,0,0,cw,ch); let u; try{ u=c.toDataURL("image/png"); }catch(err){ u=rd.result; } setBrand({logo:u},"Setup: logo"); };
+    im.onerror=()=>say($("sMsg"),"bad","That file couldn't be read as an image. Try a PNG or JPG."); im.src=rd.result; }; rd.readAsDataURL(f); });
+$("sCalcSet").addEventListener("change",async e=>{ const f=e.target.files&&e.target.files[0]; e.target.value=""; if(!f||!adminOK) return;
+  let d; try{ d=JSON.parse(await f.text()); }catch(err){ d=null; }
+  if(!d||!("company" in d||"logo" in d)) return say($("sMsg"),"bad","That isn't a settings file with a company name or logo. In the calculator or Part Checker, save the settings file, then pick that file here.");
+  const p={}; if(d.company) p.company=String(d.company); if(d.logo&&/^data:image\//.test(d.logo)) p.logo=d.logo;
+  if(!Object.keys(p).length) return say($("sMsg"),"bad","That settings file has no company name or logo filled in.");
+  setBrand(p,"Setup: company from settings file"); say($("sMsg"),"good",`Copied the ${[p.company&&"company name",p.logo&&"logo"].filter(Boolean).join(" and ")}.`); });
+
+function renderAll(){ showBrand(); renderEntry(); renderRecords(); renderSetup(); }
 
 // ---------- start ----------
 document.addEventListener("visibilitychange",()=>{ if(document.visibilityState==="visible") refresh(true); });   // back to the page: pick up others' entries
