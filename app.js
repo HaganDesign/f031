@@ -23,11 +23,12 @@ const isOther=n=>(D.others||[]).includes(n);
 const fCol=e=>(e.filters||[]).filter(n=>!isOther(n)).join(", ");
 const oCol=e=>[...(e.filters||[]).filter(isOther),e.other].filter(Boolean).join(", ");
 // machine types: a machine's own Type, or its name without the number on the end ("CHMER 4" -> CHMER)
-const autoType=n=>String(n||"").replace(/[\s#._-]*\d+[a-z]?\s*$/i,"").trim()||String(n||"").trim();
+const autoType=n=>{ const w=String(n||"").trim().split(/\s+/)[0]||""; return w.replace(/[#._-]*\d+[a-z]?$/i,"")||w; };   // first word: "CHMER CM 655C-3" -> CHMER
 const typeOf=m=>(m&&(m.type||"").trim())||autoType(m&&m.name);
 const sameT=(a,b)=>String(a).trim().toLowerCase()===String(b).trim().toLowerCase();
 const allTypes=()=>{ const s=[]; D.machines.forEach(m=>{ const t=typeOf(m); if(t&&!s.some(x=>sameT(x,t))) s.push(t); }); return s; };
-const btnOn=(o,t)=>{ const L=(D.btnTypes||{})[o]; return !L||!L.length||L.some(x=>sameT(x,t)); };   // no types picked = shows on every machine
+const btnOn=(o,t)=>{ const T=allTypes(), L=((D.btnTypes||{})[o]||[]).filter(x=>T.some(y=>sameT(x,y)));   // types no machine has any more are ignored
+  return !L.length||L.some(x=>sameT(x,t)); };   // no types picked = shows on every machine
 const machName=id=>(D.machines.find(m=>m.id===id)||{}).name||"(removed machine)";
 const sorted=mid=>D.entries.filter(e=>e.mach===mid).sort((a,b)=>(a.date<b.date?-1:a.date>b.date?1:0)||((hrs(a.hours)||0)-(hrs(b.hours)||0))||(a.at<b.at?-1:1));
 
@@ -222,7 +223,7 @@ function renderSetup(){
   const ud=(k,i,n)=>`<button type="button" class="btn alt small" data-up="${k},${i}" aria-label="Move up"${i?"":" disabled"}>&#9650;</button><button type="button" class="btn alt small" data-dn="${k},${i}" aria-label="Move down"${i<n-1?"":" disabled"}>&#9660;</button>`;
   $("sMach").innerHTML=D.machines.map((m,i)=>`<div class="item">${ud("m",i,D.machines.length)}<input data-mi="${i}" value="${esc(m.name)}" aria-label="Machine name"><button type="button" class="btn danger small" data-mdel="${i}">Remove</button></div><div class="shows">Type: <input data-mt="${i}" list="typeList" value="${esc(typeOf(m))}" aria-label="Machine type for ${esc(m.name)}" class="tybox"></div>`).join("")||`<p class="hint">No machines yet.</p>`;
   const TY=allTypes(); $("typeList").innerHTML=TY.map(t=>`<option value="${esc(t)}">`).join("");
-  const blist=(k,a,other)=>a.map((o,i)=>`<div class="item">${ud(k,i,a.length)}<input data-bi="${k},${i}" value="${esc(o)}" aria-label="Button text"><button type="button" class="btn alt small" data-bmv="${k},${i}">${other?"To Filter":"To Other"}</button><button type="button" class="btn danger small" data-bdel="${k},${i}" aria-label="Remove">&#10005;</button></div>${TY.length>1?`<div class="shows">Shows on: <button type="button" class="chip mini${(D.btnTypes||{})[o]&&D.btnTypes[o].length?"":" on"}" data-bt="${k},${i},*">All</button>${TY.map((t,j)=>`<button type="button" class="chip mini${(D.btnTypes||{})[o]&&D.btnTypes[o].some(x=>sameT(x,t))?" on":""}" data-bt="${k},${i},${j}">${esc(t)}</button>`).join("")}</div>`:""}`).join("")||`<p class="hint">No buttons yet.</p>`;
+  const blist=(k,a,other)=>a.map((o,i)=>`<div class="item">${ud(k,i,a.length)}<input data-bi="${k},${i}" value="${esc(o)}" aria-label="Button text"><button type="button" class="btn alt small" data-bmv="${k},${i}">${other?"To Filter":"To Other"}</button><button type="button" class="btn danger small" data-bdel="${k},${i}" aria-label="Remove">&#10005;</button></div>${TY.length>1?`<div class="shows">Shows on: <button type="button" class="chip mini${TY.some(t=>((D.btnTypes||{})[o]||[]).some(x=>sameT(x,t)))?"":" on"}" data-bt="${k},${i},*">All</button>${TY.map((t,j)=>`<button type="button" class="chip mini${(D.btnTypes||{})[o]&&D.btnTypes[o].some(x=>sameT(x,t))?" on":""}" data-bt="${k},${i},${j}">${esc(t)}</button>`).join("")}</div>`:""}`).join("")||`<p class="hint">No buttons yet.</p>`;
   $("sOpt").innerHTML=blist("o",D.options,false); $("sOth").innerHTML=blist("t",D.others||[],true);
   $("sSign").value=mySign(); $("sForm").value=D.form; $("sRev").value=D.rev; $("sCo").value=D.company||"";
   $("sLogoClear").hidden=!D.logo; $("sLogoPrev").innerHTML=D.logo?`<img src="${D.logo}" alt="Current logo"><span class="hint">Current logo</span>`:`<span class="hint">No logo yet. PNG with a transparent background looks best.</span>`;
