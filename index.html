@@ -48,6 +48,10 @@ table.log th{font-size:12px;color:var(--soft);text-transform:uppercase;letter-sp
 .list .item{display:flex;gap:8px;align-items:center;margin:6px 0}
 .list .item input{flex:1;min-width:0;padding:9px;font:inherit;border:1px solid var(--line);border-radius:8px}
 .list .item .btn.small{padding:6px 9px}
+.list .shows{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:-2px 0 12px 74px;font-size:13px;color:var(--muted)}
+.chip.mini{padding:5px 10px;font-size:13px}
+.list .shows .tybox{flex:0 1 220px;min-width:0;padding:7px 9px;font:inherit;font-size:14px;border:1px solid var(--line);border-radius:8px;color:var(--ink)}
+@media (max-width:560px){.list .shows{margin-left:0}}
 .btn:disabled{opacity:.35;cursor:default}
 .mono{font-variant-numeric:tabular-nums}
 #printArea{display:none}
@@ -165,11 +169,13 @@ table.log th{font-size:12px;color:var(--soft);text-transform:uppercase;letter-sp
     <div class="logoprev" id="sLogoPrev"></div>
     <h2 style="margin-top:22px">Machines</h2>
     <p class="hint">The machine names in the dropdown and at the top of the printed form, in the order shown here; use the arrows to move one. Renaming a machine renames it on its existing entries too.</p>
+    <p class="hint">The Type box under each machine is its type. It fills in from the name without the number ("CHMER 4" is CHMER); change it if that guess is wrong. Machines of the same type share the same filter and Other buttons.</p>
+    <datalist id="typeList"></datalist>
     <div class="list" id="sMach"></div>
     <div class="btns"><button type="button" class="btn alt small" id="sMachAdd">+ Add machine</button> <button type="button" class="btn alt small" id="sQr">Print QR codes</button></div>
     <p class="hint">Print QR codes makes one code per machine, with the name under it. Scanning a machine's code opens the log with that machine already picked.</p>
     <h2 style="margin-top:22px">Filter buttons</h2>
-    <p class="hint">Filters only: these print in the FILTER CHANGE column. In the order shown; use the arrows to move one.</p>
+    <p class="hint">Filters only: these print in the FILTER CHANGE column. In the order shown; use the arrows to move one. Under each, "Shows on" picks which machine types get that button; All means every machine.</p>
     <div class="list" id="sOpt"></div>
     <div class="btns"><button type="button" class="btn alt small" id="sOptAdd">+ Add filter button</button></div>
     <h2 style="margin-top:22px">Other buttons</h2>

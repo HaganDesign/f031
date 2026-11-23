@@ -15,13 +15,19 @@ const LS={get:k=>{try{return localStorage.getItem(k)}catch(e){return null}},set:
 const CFG=window.F031_CONFIG||null;
 
 // ---------- the shared log ----------
-function blank(){ return {app:APP,v:1,company:"",logo:"",machines:[],options:["Filters changed"],others:[],form:"F-031",rev:"-",entries:[],deleted:[]}; }
+function blank(){ return {app:APP,v:1,company:"",logo:"",btnTypes:{},machines:[],options:["Filters changed"],others:[],form:"F-031",rev:"-",entries:[],deleted:[]}; }
 let D=blank(), SHA=null, TOKEN=null;
 const mySign=()=>LS.get("f031sign")||"";
 const hrs=v=>{ const m=/^\s*(\d+(?:\.\d+)?)(?::(\d{1,2}))?\s*$/.exec(String(v??"")); return m?(+m[1])+(m[2]?+m[2]/60:0):NaN; };
 const isOther=n=>(D.others||[]).includes(n);
 const fCol=e=>(e.filters||[]).filter(n=>!isOther(n)).join(", ");
 const oCol=e=>[...(e.filters||[]).filter(isOther),e.other].filter(Boolean).join(", ");
+// machine types: a machine's own Type, or its name without the number on the end ("CHMER 4" -> CHMER)
+const autoType=n=>String(n||"").replace(/[\s#._-]*\d+[a-z]?\s*$/i,"").trim()||String(n||"").trim();
+const typeOf=m=>(m&&(m.type||"").trim())||autoType(m&&m.name);
+const sameT=(a,b)=>String(a).trim().toLowerCase()===String(b).trim().toLowerCase();
+const allTypes=()=>{ const s=[]; D.machines.forEach(m=>{ const t=typeOf(m); if(t&&!s.some(x=>sameT(x,t))) s.push(t); }); return s; };
+const btnOn=(o,t)=>{ const L=(D.btnTypes||{})[o]; return !L||!L.length||L.some(x=>sameT(x,t)); };   // no types picked = shows on every machine
 const machName=id=>(D.machines.find(m=>m.id===id)||{}).name||"(removed machine)";
 const sorted=mid=>D.entries.filter(e=>e.mach===mid).sort((a,b)=>(a.date<b.date?-1:a.date>b.date?1:0)||((hrs(a.hours)||0)-(hrs(b.hours)||0))||(a.at<b.at?-1:1));
 
@@ -112,16 +118,17 @@ function fillMach(sel,keep){ const cur=keep||sel.value||LS.get("f031mach");
 // ---------- new entry / edit ----------
 let picked=new Set(), editId=null;
 function renderChips(){
-  const grp=(el,list,none)=>{ el.innerHTML=list.map((o,i)=>`<button type="button" class="chip${picked.has(o)?" on":""}" data-i="${i}">${esc(o)}</button>`).join("")||`<span class="hint">${none}</span>`;
+  const mt=typeOf(D.machines.find(m=>m.id===$("eMach").value));
+  const grp=(el,all,none)=>{ const list=all.filter(o=>picked.has(o)||btnOn(o,mt)); el.innerHTML=list.map((o,i)=>`<button type="button" class="chip${picked.has(o)?" on":""}" data-i="${i}">${esc(o)}</button>`).join("")||`<span class="hint">${none}</span>`;
     el.querySelectorAll(".chip").forEach(c=>c.addEventListener("click",()=>{ const o=list[+c.dataset.i]; picked.has(o)?picked.delete(o):picked.add(o); renderChips(); })); };
-  grp($("eChips"),D.options,"Add filter buttons in Setup."); grp($("eChipsO"),D.others||[],"Add Other buttons in Setup, or write it below."); }
+  grp($("eChips"),D.options,`No filter buttons set for ${esc(mt||"this machine")}. Add them in Setup.`); grp($("eChipsO"),D.others||[],"Nothing set here for this machine type. Write it below."); }
 function rowHtml(e,act){ return `<tr><td class="mono">${esc(e.hours)}</td><td class="mono">${fmtDate(e.date)}</td><td>${esc(e.sign)}</td><td>${esc(fCol(e))}</td><td>${esc(oCol(e))}${e.ed?` <span class="hint">(edited)</span>`:""}</td>${act?`<td style="white-space:nowrap"><button type="button" class="btn alt small" data-edit="${esc(e.id)}">Edit</button> <button type="button" class="btn danger small" data-del="${esc(e.id)}">Delete</button></td>`:""}</tr>`; }
 function renderEntry(){ fillMach($("eMach")); renderChips();
   if(!$("eDate").value) $("eDate").value=today();
   if(!$("eSign").value) $("eSign").value=mySign();
   const L=D.entries.filter(e=>e.mach===$("eMach").value).sort((a,b)=>(a.ed||a.at||"")<(b.ed||b.at||"")?1:-1).slice(0,5);
   $("eRecent").innerHTML=L.length?L.map(e=>rowHtml(e,false)).join(""):`<tr><td colspan="5" class="hint">No entries yet for this machine.</td></tr>`; }
-$("eMach").addEventListener("change",()=>{ LS.set("f031mach",$("eMach").value); if(!editId) say($("eMsg")); renderEntry(); });
+$("eMach").addEventListener("change",()=>{ LS.set("f031mach",$("eMach").value); $("rMach").value=$("eMach").value; if(!editId){ say($("eMsg")); const mt=typeOf(D.machines.find(m=>m.id===$("eMach").value)); [...picked].forEach(o=>{ if(!btnOn(o,mt)) picked.delete(o); }); } renderEntry(); });
 function editMode(on){ $("eSave").textContent=on?"Save changes":"Save entry"; $("eCancel").hidden=!on; document.querySelector('nav button[data-tab="entry"]').textContent=on?"Edit entry":"New entry"; }
 function startEdit(id){ const e=D.entries.find(x=>x.id===id); if(!e) return; editId=id; document.querySelector('nav button[data-tab="entry"]').click();
   $("eMach").value=e.mach; const [h,m]=String(e.hours).split(":"); $("eHours").value=h||""; $("eMins").value=m||"";
@@ -149,8 +156,9 @@ $("eSave").addEventListener("click",async()=>{
     else d.entries.push({id:uid(),mach,hours,date,sign,filters,other,at:now});
   },`${id?"Edit":"Entry"}: ${machName(mach)} ${hours} ${fmtDate(date)} ${sign}`);
   if(!ok) return;
-  if(id){ stopEdit(); say($("eMsg"),"good",`Changes saved to the log for ${esc(machName(mach))}.`); }
-  else { picked.clear(); $("eHours").value=""; $("eMins").value=""; $("eOther").value=""; say($("eMsg"),"good",`Saved to the log for ${esc(machName(mach))}.`); }
+  if(id){ stopEdit(); say($("eMsg"),"good",`Changes saved: ${esc(machName(mach))}, hour meter ${esc(hours)}, dated ${fmtDate(date)}.`); }
+  else { picked.clear(); $("eHours").value=""; $("eMins").value=""; $("eOther").value=""; say($("eMsg"),"good",`Saved: ${esc(machName(mach))}, hour meter ${esc(hours)}, dated ${fmtDate(date)}.`); }
+  if(D.machines.some(m=>m.id===mach)) $("rMach").value=mach;   // Records follows the machine being entered
   renderEntry();
 });
 
@@ -192,7 +200,7 @@ $("xSave").addEventListener("click",()=>{ const blob=new Blob([JSON.stringify(D,
 function merge(D,d){ let added=0, upd=0;
   (d.machines||[]).forEach(m=>{ if(!m||!m.id) return; if(D.machines.find(x=>x.id===m.id)) return;
     const same=D.machines.find(x=>x.name.trim().toLowerCase()===String(m.name||"").trim().toLowerCase());
-    if(same) (d.entries||[]).forEach(e=>{ if(e.mach===m.id) e.mach=same.id; }); else D.machines.push({id:m.id,name:String(m.name||"Machine")}); });
+    if(same) (d.entries||[]).forEach(e=>{ if(e.mach===m.id) e.mach=same.id; }); else D.machines.push(m.type?{id:m.id,name:String(m.name||"Machine"),type:String(m.type)}:{id:m.id,name:String(m.name||"Machine")}); });
   D.others=D.others||[];
   (d.others||[]).forEach(o=>{ if(!o) return; D.options=D.options.filter(x=>x!==o); if(!D.others.includes(o)) D.others.push(o); });
   (d.options||[]).forEach(o=>{ if(o&&!D.options.includes(o)&&!D.others.includes(o)) D.options.push(o); });
@@ -200,6 +208,7 @@ function merge(D,d){ let added=0, upd=0;
   const dead=new Set(D.deleted); D.entries=D.entries.filter(e=>!dead.has(e.id));
   (d.entries||[]).forEach(e=>{ if(!e||!e.id||dead.has(e.id)) return; const i=D.entries.findIndex(x=>x.id===e.id);
     if(i<0){ D.entries.push(e); added++; } else if((e.ed||e.at||"")>(D.entries[i].ed||D.entries[i].at||"")){ D.entries[i]=e; upd++; } });
+  Object.entries(d.btnTypes||{}).forEach(([k,L])=>{ D.btnTypes=D.btnTypes||{}; if(!D.btnTypes[k]&&Array.isArray(L)) D.btnTypes[k]=L.slice(); });
   return {added,upd}; }
 $("xLoad").addEventListener("change",async ev=>{ const files=[...ev.target.files]; ev.target.value=""; if(!files.length||!adminOK) return;
   const ds=[], bad=[]; for(const f of files){ try{ const d=JSON.parse(await f.text()); if(!d||d.app!==APP) throw 0; ds.push(d); }catch(e){ bad.push(f.name); } }
@@ -211,8 +220,9 @@ $("xLoad").addEventListener("change",async ev=>{ const files=[...ev.target.files
 function renderSetup(){
   adminView(); $("sSign").value=mySign(); $("formLine").textContent=`${D.form||"F-031"} Rev ${D.rev||"-"}`; if(!adminOK) return;
   const ud=(k,i,n)=>`<button type="button" class="btn alt small" data-up="${k},${i}" aria-label="Move up"${i?"":" disabled"}>&#9650;</button><button type="button" class="btn alt small" data-dn="${k},${i}" aria-label="Move down"${i<n-1?"":" disabled"}>&#9660;</button>`;
-  $("sMach").innerHTML=D.machines.map((m,i)=>`<div class="item">${ud("m",i,D.machines.length)}<input data-mi="${i}" value="${esc(m.name)}" aria-label="Machine name"><button type="button" class="btn danger small" data-mdel="${i}">Remove</button></div>`).join("")||`<p class="hint">No machines yet.</p>`;
-  const blist=(k,a,other)=>a.map((o,i)=>`<div class="item">${ud(k,i,a.length)}<input data-bi="${k},${i}" value="${esc(o)}" aria-label="Button text"><button type="button" class="btn alt small" data-bmv="${k},${i}">${other?"To Filter":"To Other"}</button><button type="button" class="btn danger small" data-bdel="${k},${i}" aria-label="Remove">&#10005;</button></div>`).join("")||`<p class="hint">No buttons yet.</p>`;
+  $("sMach").innerHTML=D.machines.map((m,i)=>`<div class="item">${ud("m",i,D.machines.length)}<input data-mi="${i}" value="${esc(m.name)}" aria-label="Machine name"><button type="button" class="btn danger small" data-mdel="${i}">Remove</button></div><div class="shows">Type: <input data-mt="${i}" list="typeList" value="${esc(typeOf(m))}" aria-label="Machine type for ${esc(m.name)}" class="tybox"></div>`).join("")||`<p class="hint">No machines yet.</p>`;
+  const TY=allTypes(); $("typeList").innerHTML=TY.map(t=>`<option value="${esc(t)}">`).join("");
+  const blist=(k,a,other)=>a.map((o,i)=>`<div class="item">${ud(k,i,a.length)}<input data-bi="${k},${i}" value="${esc(o)}" aria-label="Button text"><button type="button" class="btn alt small" data-bmv="${k},${i}">${other?"To Filter":"To Other"}</button><button type="button" class="btn danger small" data-bdel="${k},${i}" aria-label="Remove">&#10005;</button></div>${TY.length>1?`<div class="shows">Shows on: <button type="button" class="chip mini${(D.btnTypes||{})[o]&&D.btnTypes[o].length?"":" on"}" data-bt="${k},${i},*">All</button>${TY.map((t,j)=>`<button type="button" class="chip mini${(D.btnTypes||{})[o]&&D.btnTypes[o].some(x=>sameT(x,t))?" on":""}" data-bt="${k},${i},${j}">${esc(t)}</button>`).join("")}</div>`:""}`).join("")||`<p class="hint">No buttons yet.</p>`;
   $("sOpt").innerHTML=blist("o",D.options,false); $("sOth").innerHTML=blist("t",D.others||[],true);
   $("sSign").value=mySign(); $("sForm").value=D.form; $("sRev").value=D.rev; $("sCo").value=D.company||"";
   $("sLogoClear").hidden=!D.logo; $("sLogoPrev").innerHTML=D.logo?`<img src="${D.logo}" alt="Current logo"><span class="hint">Current logo</span>`:`<span class="hint">No logo yet. PNG with a transparent background looks best.</span>`;
@@ -226,13 +236,22 @@ function renderSetup(){
     S(d=>{ const a=arr(d,k), x=at(d,k,key), y=x+(up?-1:1); if(x<0||y<0||y>=a.length) return false; [a[x],a[y]]=[a[y],a[x]]; },"Setup: reorder"); }));
   $("sMach").querySelectorAll("[data-mi]").forEach(el=>el.addEventListener("change",()=>{ const m=D.machines[+el.dataset.mi], v=el.value.trim(); if(!v){ el.value=m.name; return; }
     S(d=>{ const x=d.machines.find(q=>q.id===m.id); if(!x) return false; x.name=v; },`Setup: rename machine to ${v}`); }));
+  $("sMach").querySelectorAll("[data-mt]").forEach(el=>el.addEventListener("change",()=>{ const m=D.machines[+el.dataset.mt], old=typeOf(m), v=el.value.trim()||autoType(m.name);
+    if(sameT(v,old)&&v===old) return;
+    S(d=>{ const x=d.machines.find(q=>q.id===m.id); if(!x) return false; x.type=v;
+      // the last machine of the old type: buttons that pointed at it follow the new name
+      if(!d.machines.some(q=>q.id!==m.id&&sameT(typeOf(q),old))) Object.values(d.btnTypes||{}).forEach(L=>L.forEach((t,j)=>{ if(sameT(t,old)) L[j]=v; }));
+    },`Setup: ${m.name} type ${v}`); }));
+  document.querySelectorAll("#tab-setup [data-bt]").forEach(b=>b.addEventListener("click",()=>{ const [k,i,j]=b.dataset.bt.split(","), name=arr(D,k)[+i], t=j==="*"?null:TY[+j];
+    S(d=>{ const bt=d.btnTypes=d.btnTypes||{}; if(!t){ delete bt[name]; return; }
+      let L=(bt[name]||[]).slice(); L=L.some(x=>sameT(x,t))?L.filter(x=>!sameT(x,t)):[...L,t]; if(L.length) bt[name]=L; else delete bt[name]; },`Setup: ${name} shows on ${t||"all"}`); }));
   $("sMach").querySelectorAll("[data-mdel]").forEach(b=>b.addEventListener("click",()=>{ const m=D.machines[+b.dataset.mdel], n=D.entries.filter(e=>e.mach===m.id).length;
     if(n) return say($("sMsg"),"bad",`${esc(m.name)} has ${n} entr${n===1?"y":"ies"}, so it stays. Rename it instead if it changed.`);
     S(d=>{ d.machines=d.machines.filter(q=>q.id!==m.id); },`Setup: remove machine ${m.name}`); }));
   document.querySelectorAll("#tab-setup [data-bi]").forEach(el=>el.addEventListener("change",()=>{ const [k,i]=el.dataset.bi.split(","), old=arr(D,k)[+i], v=el.value.trim(); if(!v){ el.value=old; return; }
-    S(d=>{ const a=arr(d,k), x=a.indexOf(old); if(x<0) return false; a[x]=v; },`Setup: rename button to ${v}`); }));
+    S(d=>{ const a=arr(d,k), x=a.indexOf(old); if(x<0) return false; a[x]=v; const bt=d.btnTypes||{}; if(bt[old]){ bt[v]=bt[old]; delete bt[old]; } },`Setup: rename button to ${v}`); }));
   document.querySelectorAll("#tab-setup [data-bdel]").forEach(b=>b.addEventListener("click",()=>{ const [k,i]=b.dataset.bdel.split(","), name=arr(D,k)[+i];
-    S(d=>{ const a=arr(d,k), x=a.indexOf(name); if(x<0) return false; a.splice(x,1); },`Setup: remove button ${name}`); }));
+    S(d=>{ const a=arr(d,k), x=a.indexOf(name); if(x<0) return false; a.splice(x,1); if(d.btnTypes) delete d.btnTypes[name]; },`Setup: remove button ${name}`); }));
   document.querySelectorAll("#tab-setup [data-bmv]").forEach(b=>b.addEventListener("click",()=>{ const [k,i]=b.dataset.bmv.split(","), name=arr(D,k)[+i];
     S(d=>{ const a=arr(d,k), x=a.indexOf(name); if(x<0) return false; a.splice(x,1); arr(d,k==="o"?"t":"o").push(name); },`Setup: move ${name} to ${k==="o"?"Other":"Filter"}`); }));
 }
