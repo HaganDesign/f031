@@ -47,8 +47,11 @@ async function push(d,sha,msg){
   return (await r.json()).content.sha;
 }
 let busy=false;
-async function commit(op,msg){
-  if(busy) return false; busy=true; document.body.classList.add("busy"); setSync("Saving...");
+// saves line up one after another, so a change made while another is still saving is never lost
+let saveChain=Promise.resolve();
+function commit(op,msg){ const p=saveChain.then(()=>commitNow(op,msg)); saveChain=p.catch(()=>{}); return p; }
+async function commitNow(op,msg){
+  busy=true; document.body.classList.add("busy"); setSync("Saving...");
   try{
     for(let tries=0;tries<4;tries++){
       let d,sha; if(tries){ const p=await pull(); d=p.d; sha=p.sha; F=p.f||F; } else { d=JSON.parse(JSON.stringify(I)); sha=SHA; }

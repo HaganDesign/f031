@@ -67,8 +67,11 @@ async function push(d,sha,msg){
 }
 // every change is a small function applied to the newest log; if another device saved in between, it's applied again on top of theirs
 let busy=false;
-async function commit(op,msg){
-  if(busy) return false; busy=true; document.body.classList.add("busy"); setSync("Saving...");
+// saves line up one after another, so a change made while another is still saving is never lost
+let saveChain=Promise.resolve();
+function commit(op,msg){ const p=saveChain.then(()=>commitNow(op,msg)); saveChain=p.catch(()=>{}); return p; }
+async function commitNow(op,msg){
+  busy=true; document.body.classList.add("busy"); setSync("Saving...");
   try{
     for(let tries=0;tries<4;tries++){
       const {d,sha}=tries?await pull():{d:JSON.parse(JSON.stringify(D)),sha:SHA};
@@ -288,7 +291,11 @@ function renderStock(S){
     const btns=Object.entries(D.btnStock||{}).filter(([o,v])=>v.item===it.id).map(([o,v])=>`${esc(o)} (${v.qty})`).join(", ");
     return `<div class="stockcard"><div class="item"><input data-sn="${i}" value="${esc(it.name)}" aria-label="Stock item name"><button type="button" class="btn danger small" data-sdel="${i}">Remove</button></div>
     <div class="onhand${h.qty<0||(it.low&&h.qty<=it.low)?" low":""}"><b>${h.qty}</b> on hand</div>
-    <div class="hint">Counted ${h.base.by?`${h.base.qty} on ${fmt(h.base.at)} by ${esc(h.base.by)}`:`from 0 when added ${fmt(h.base.at)}`}${h.recv||u.n?`. Since then: ${[h.recv?`+${h.recv} received`:"",u.n?`-${u.n} used in ${u.list.length} entr${u.list.length===1?"y":"ies"}`:""].filter(Boolean).join(", ")}`:""}.${btns?` Taken by: ${btns}.`:` No button takes from it yet; set that under the buttons below.`}</div>
+    <div class="hint">Counted ${h.base.by?`${h.base.qty} on ${fmt(h.base.at)} by ${esc(h.base.by)}`:`from 0 when added ${fmt(h.base.at)}`}${h.recv||u.n?`. Since then: ${[h.recv?`+${h.recv} received`:"",u.n?`-${u.n} used in ${u.list.length} entr${u.list.length===1?"y":"ies"}`:""].filter(Boolean).join(", ")}`:""}.${btns?` Taken by: ${btns}.`:` No button takes from it yet: pick it just below and tap Link.`}</div>
+    ${(()=>{ const all=[...D.options,...(D.others||[])], key=(it.name.trim().split(/\s+/)[0]||"").toLowerCase(), linked=Object.keys(D.btnStock||{}).filter(o=>(D.btnStock[o]||{}).item===it.id);
+      const cand=all.filter(o=>!linked.includes(o)); if(!cand.length) return "";
+      const best=cand.find(o=>key&&o.toLowerCase().includes(key))||cand[0];
+      return `<div class="row3"><label class="f">${linked.length?"Link another button":"Which button takes from it"}<select data-slb="${i}">${cand.map(o=>`<option${o===best?" selected":""}>${esc(o)}</option>`).join("")}</select></label><label class="f" style="flex:0 0 90px">Each time<input type="number" min="1" step="1" data-slq="${i}" value="6"></label><button type="button" class="btn alt small" data-sl="${i}">Link</button></div>`; })()}
     <div class="row3"><label class="f">Received<input type="number" min="1" step="1" data-srq="${i}" placeholder="how many"></label><button type="button" class="btn alt small" data-srb="${i}">Add received</button></div>
     <div class="row3"><label class="f">Physical count<input type="number" min="0" step="1" data-scq="${i}" placeholder="counted on the shelf"></label><button type="button" class="btn alt small" data-scb="${i}">Set count</button></div>
     <div class="row3"><label class="f">Warn when down to<input type="number" min="0" step="1" data-slow="${i}" value="${it.low||""}" placeholder="e.g. 12"></label></div>
@@ -300,6 +307,9 @@ function renderStock(S){
   $("sStock").querySelectorAll("[data-sdel]").forEach(b=>b.addEventListener("click",()=>{ const it=D.stock[+b.dataset.sdel];
     if(!confirm(`Remove ${it.name} from stock tracking? Buttons stop taking from it. Entries are not changed.`)) return;
     S(d=>{ d.stock=d.stock.filter(q=>q.id!==it.id); d.stockLog=(d.stockLog||[]).filter(e=>e.item!==it.id); Object.keys(d.btnStock||{}).forEach(o=>{ if(d.btnStock[o].item===it.id) delete d.btnStock[o]; }); },`Stock: remove ${it.name}`); }));
+  $("sStock").querySelectorAll("[data-sl]").forEach(b=>b.addEventListener("click",()=>{ const i=+b.dataset.sl, it=D.stock[i], o=document.querySelector(`[data-slb="${i}"]`).value, q=Math.round(+document.querySelector(`[data-slq="${i}"]`).value);
+    if(!(q>0)) return say($("sMsg"),"bad","Enter how many come out each time.");
+    Promise.resolve(S(d=>{ (d.btnStock=d.btnStock||{})[o]={item:it.id,qty:q}; },`Stock: ${o} takes ${q} ${it.name}`)).then(ok=>{ if(ok===true) say($("sMsg"),"good",`Linked: ${esc(o)} takes ${q} ${esc(it.name)} each time. Entries since the last count are taken off now.`); }); }));
   $("sStock").querySelectorAll("[data-srb]").forEach(b=>b.addEventListener("click",()=>{ const i=+b.dataset.srb, it=D.stock[i], q=Math.round(+document.querySelector(`[data-srq="${i}"]`).value);
     if(!(q>0)) return say($("sMsg"),"bad","Enter how many came in.");
     S(d=>{ (d.stockLog=d.stockLog||[]).push({id:uid(),item:it.id,kind:"recv",qty:q,at:new Date().toISOString(),by:who()}); },`Stock: received ${q} ${it.name}`); }));
