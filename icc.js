@@ -20,7 +20,7 @@ const num=v=>{ const x=parseFloat(String(v).trim()); return isFinite(x)?x:NaN; }
 
 function blank(){ return {app:APP,v:1,pn:"1704612",form:"F-030",rev:"-",mach:"",
   spec:{orbit:0.0195,yp:0.512,ym:-0.465,step:0.0005,burns:5,per:8,filt:10},
-  sets:[],stockLog:[],low:16,stockAt:new Date().toISOString(),deleted:[]}; }
+  sets:[],stockLog:[],lowSets:8,stockAt:new Date().toISOString(),deleted:[]}; }
 let I=blank(), SHA=null, F=null, TOKEN=null, adminOK=false;
 const mySign=()=>LS.get("f031sign")||"";
 
@@ -123,6 +123,7 @@ function lastFilter(){ if(!F||!I.mach) return null; const others=F.others||[];
   return (F.entries||[]).filter(e=>e.mach===I.mach&&(e.filters||[]).some(n=>!others.includes(n))).sort((a,b)=>a.at<b.at?-1:1).pop()||null; }
 function burnsSinceFilter(){ const lf=lastFilter(); if(!lf) return null; let n=0;
   I.sets.forEach(s=>s.burns.forEach(b=>{ if(b.at>lf.at&&b.date>=lf.date) n++; })); return {n,lf}; }
+const lowAt=()=>(I.lowSets||0)*(I.spec.per||8);   // reorder point, in electrodes
 const machName=()=>{ const m=F&&(F.machines||[]).find(x=>x.id===I.mach); return m?m.name:""; };
 const f031Link=()=>`index.html${I.mach?`?m=${encodeURIComponent(I.mach)}`:""}`;
 
@@ -137,7 +138,7 @@ function renderEntry(){
   if(fs&&I.spec.filt&&fs.n>=I.spec.filt) ban+=`<div class="banner bad"><b>Filters are due.</b> ${fs.n} burns since the last filter change on ${esc(machName())} (${fmtDate(fs.lf.date)}). Change them before the next burn and log it on F-031: <a href="${f031Link()}">open F-031 for ${esc(machName())}</a>.</div>`;
   else if(fs&&I.spec.filt&&fs.n>=I.spec.filt-I.spec.burns) ban+=`<div class="banner warn">Filters are due after this set: ${fs.n} of ${I.spec.filt} burns since the last change on ${fmtDate(fs.lf.date)}.</div>`;
   if(h.qty<(I.spec.per||8)) ban+=`<div class="banner bad">Only ${h.qty} electrodes on hand, less than one set. Tell the admin.</div>`;
-  else if(I.low&&h.qty<=I.low) ban+=`<div class="banner warn">${h.qty} electrodes on hand. Running low, time to order.</div>`;
+  else if(lowAt()&&h.qty<=lowAt()) ban+=`<div class="banner warn"><b>Order electrodes.</b> ${h.qty} on hand, ${Math.floor(h.qty/I.spec.per)} set${Math.floor(h.qty/I.spec.per)===1?"":"s"} left (the reorder point is ${I.lowSets}). Let the admin know.</div>`;
   $("bBanner").innerHTML=ban;
   if(editId){ const {s,b}=findBurn(editId)||{}; if(!s) return stopEdit();
     $("bHead").innerHTML=`<b>Editing burn ${s.burns.indexOf(b)+1} of set ${setNo(s)}</b><span class="hint">Change what you need and tap Save changes.</span>`; $("bNew").hidden=true; return; }
@@ -228,12 +229,13 @@ function renderSetup(){ adminView(); $("sSign").value=mySign(); if(!adminOK) ret
   const h=eHand(), fmt=iso=>{ const d=new Date(iso); return `${d.getMonth()+1}/${d.getDate()}/${d.getFullYear()}`; };
   const log=I.stockLog.slice().sort((x,y)=>x.at<y.at?1:-1).slice(0,6);
   const since=[h.recv?`+${h.recv} received`:"",h.sets?`-${h.used} in ${h.sets} new set${h.sets===1?"":"s"}`:"",h.chip?`-${h.chip} chipped swaps`:"",h.scrap?`-${h.scrap} scrapped`:""].filter(Boolean).join(", ");
-  $("sStock").innerHTML=`<div class="stockcard"><div class="onhand${h.qty<I.spec.per||(I.low&&h.qty<=I.low)?" low":""}"><b>${h.qty}</b> electrodes on hand <span class="hint">(${Math.floor(Math.max(0,h.qty)/I.spec.per)} full set${Math.floor(Math.max(0,h.qty)/I.spec.per)===1?"":"s"} worth)</span></div>
+  $("sStock").innerHTML=`<div class="stockcard"><div class="onhand${h.qty<I.spec.per||(lowAt()&&h.qty<=lowAt())?" low":""}"><b>${h.qty}</b> electrodes on hand <span class="hint">(${Math.floor(Math.max(0,h.qty)/I.spec.per)} full set${Math.floor(Math.max(0,h.qty)/I.spec.per)===1?"":"s"} worth)</span></div>
     <div class="hint">${h.base.by?`Counted ${h.base.qty} on ${fmt(h.base.at)} by ${esc(h.base.by)}`:`Starting from 0, ${fmt(h.base.at)}`}${since?`. Since then: ${since}`:""}.</div>
     <div class="row3"><label class="f">Received (electrodes, not boxes)<input type="number" min="1" step="1" id="sRq" placeholder="a box of ${I.spec.per} = ${I.spec.per}"></label><button type="button" class="btn alt small" id="sRb">Add received</button></div>
     <div class="row3"><label class="f">Scrapped (chipped on the shelf, broken)<input type="number" min="1" step="1" id="sXq" placeholder="how many"></label><button type="button" class="btn alt small" id="sXb">Take off</button></div>
     <div class="row3"><label class="f">Physical count<input type="number" min="0" step="1" id="sCq" placeholder="every electrode on the shelf"></label><button type="button" class="btn alt small" id="sCb">Set count</button></div>
-    <div class="row3"><label class="f">Warn when down to<input type="number" min="0" step="1" id="sLow" value="${I.low||""}"></label></div>
+    <div class="row3"><label class="f">Order more when down to (sets)<input type="number" min="0" step="1" id="sLow" value="${I.lowSets??""}"></label></div>
+    <div class="hint">${I.lowSets?`Warns at ${lowAt()} electrodes or fewer (${I.lowSets} sets of ${I.spec.per}), so there is time to make and ship more.`:"0 turns the reorder warning off."}</div>
     ${log.length?`<details><summary>Counts, deliveries and scrap</summary>${log.map(e=>`<div class="hint">${fmt(e.at)} &middot; ${e.kind==="count"?`counted ${e.qty}`:e.kind==="recv"?`received ${e.qty}`:`scrapped ${e.qty}`} &middot; ${esc(e.by)}</div>`).join("")}</details>`:""}</div>`;
   const who=()=>mySign()||"ADMIN", S=(op,msg)=>adminOK?commit(op,msg):(adminView(),false);
   $("sRb").onclick=()=>{ const q=Math.round(+$("sRq").value); if(!(q>0)) return say($("sMsg"),"bad","Enter how many electrodes came in.");
@@ -243,7 +245,7 @@ function renderSetup(){ adminView(); $("sSign").value=mySign(); if(!adminOK) ret
   $("sCb").onclick=()=>{ const el=$("sCq"), q=Math.round(+el.value); if(el.value===""||!(q>=0)) return say($("sMsg"),"bad","Enter the number counted on the shelf.");
     if(q!==h.qty&&!confirm(`The log shows ${h.qty} on hand. Set it to ${q}, as counted? Everything from now on counts down from ${q}.`)) return;
     S(d=>{ d.stockLog.push({id:uid(),kind:"count",qty:q,at:new Date().toISOString(),by:who()}); },`ICC stock: counted ${q}`); };
-  $("sLow").onchange=()=>{ const q=Math.max(0,Math.round(+$("sLow").value||0)); S(d=>{ d.low=q; },`ICC stock: warn at ${q}`); };
+  $("sLow").onchange=()=>{ const q=Math.max(0,Math.round(+$("sLow").value||0)); S(d=>{ d.lowSets=q; delete d.low; },`ICC stock: reorder at ${q} sets`); };
 }
 const setSpec=(key,id,isInt)=>$(id).addEventListener("change",()=>{ if(!adminOK) return; const v=isInt?Math.round(+$(id).value):num($(id).value);
   if(!isFinite(v)||(isInt&&v<(key==="filt"?0:1))){ say($("sMsg"),"bad","That has to be a number."); return renderSetup(); }
