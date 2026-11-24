@@ -146,10 +146,10 @@ function renderEntry(){
   else if(lowAt()&&h.qty<=lowAt()) ban+=`<div class="banner warn"><b>Order electrodes.</b> ${h.qty} on hand, ${Math.floor(h.qty/I.spec.per)} set${Math.floor(h.qty/I.spec.per)===1?"":"s"} left (the reorder point is ${I.lowSets}). Let the admin know.</div>`;
   $("bBanner").innerHTML=ban;
   if(editId){ const {s,b}=findBurn(editId)||{}; if(!s) return stopEdit();
-    $("bHead").innerHTML=`<b>Editing burn ${s.burns.indexOf(b)+1} of set ${setNo(s)}</b><span class="hint">Change what you need and tap Save changes.</span>`; $("bNew").hidden=true; $("bChipBox").hidden=true; return; }
+    $("bHead").innerHTML=`<b>Editing burn ${s.burns.indexOf(b)+1} of set ${setNo(s)}</b><span class="hint">Change what you need and tap Save changes.</span>`; $("bNew").hidden=true; return; }
   const nb=nextBurn();
   $("bHead").innerHTML=`<b>Set ${nb.newSet?I.sets.length+1:setNo(nb.set)} &middot; burn ${nb.k} of ${nb.spec.burns}</b><span class="hint">P/N ${esc(I.pn)}${machName()?` &middot; ${esc(machName())}`:""} &middot; ${h.qty} electrodes on hand</span>`;
-  $("bNew").hidden=!nb.newSet; $("bChipBox").hidden=!nb.newSet; if(!nb.newSet) $("bChipBox").open=false;
+  $("bNew").hidden=!nb.newSet;
   if(!$("bDiff").checked) fillVals(expect(nb.spec,nb.k));
   if(!$("bDate").value) $("bDate").value=today();
   if(!$("bSign").value) $("bSign").value=mySign();
@@ -195,7 +195,7 @@ $("bSave").addEventListener("click",async()=>{
     else { if(!s||s.id!==nb.set.id||s.burns.length!==nb.k-1) return false; s.burns.push(burn); } },`ICC burn ${nb.k}: ${sn} ${sign}`);
   if(ok==="skip"){ say($("bMsg"),"warn","Someone else saved a burn at the same moment. Check the set and burn number above, then save again."); renderEntry(); return; }
   if(!ok) return;
-  ["bSN","bRT","bNote"].forEach(id=>$(id).value=""); $("bChip").value="0"; $("bChipBox").open=false; setDiff(false);
+  ["bSN","bRT","bNote"].forEach(id=>$(id).value=""); $("bChip").value="0"; setDiff(false);
   say($("bMsg"),"good",`Saved: burn ${nb.k} of set ${I.sets.length}, S/N ${esc(sn)}.`); renderEntry();
   const fs=burnsSinceFilter(), s=curSet();
   if(fs&&I.spec.filt&&fs.n>=I.spec.filt) await dialog("Filters are due",`<p>${fs.n} burns since the last filter change on ${esc(machName())}. Change the filters before the next burn, then log it on F-031.</p>`,[{t:"Open F-031",v:1},{t:"Later",v:0,alt:true}]).then(v=>{ if(v) location.href=f031Link(); });

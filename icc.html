@@ -148,7 +148,11 @@ table.log th{font-size:12px;color:var(--soft);text-transform:uppercase;letter-sp
   <section class="card" id="tab-entry">
     <div id="bBanner"></div>
     <div class="runhead" id="bHead"></div>
-    <div id="bNew" class="banner info" hidden><b>New electrode set.</b> The last set finished its <span class="nBurns">5</span> burns. Load a fresh set of <span class="nSet">8</span>; the orbit and depths below are back at the start values.</div>
+    <div id="bNew" hidden>
+      <div class="banner info"><b>New electrode set.</b> The last set has done its <span class="nBurns">5</span> burns. Load a fresh set of <span class="nSet">8</span> electrodes. The orbit and depths go back to the start values below.</div>
+      <label class="f">Chipped electrodes swapped out of this set<input id="bChip" type="number" min="0" step="1" value="0" inputmode="numeric"></label>
+      <span class="hint" style="display:block;margin:-6px 0 12px">Swapped any for good ones from another set? Enter how many. Keep the chipped ones aside; they go on the chipped list for the maker.</span>
+    </div>
     <label class="f">Serial number (part S/N)<input id="bSN" type="text" autocapitalize="characters" placeholder="S/N"></label>
     <div class="expect">
       <label class="f">Orbit<input id="bOrb" type="text" inputmode="decimal" readonly></label>
@@ -161,9 +165,6 @@ table.log th{font-size:12px;color:var(--soft);text-transform:uppercase;letter-sp
       <label class="f">Initials<input id="bSign" type="text" maxlength="8" autocapitalize="characters" placeholder="e.g. JS"></label>
     </div>
     <label class="f">Date<input id="bDate" type="date"></label>
-    <details id="bChipBox" hidden style="margin:0 0 12px"><summary style="cursor:pointer;font-size:14px;color:var(--acc)">Chipped electrodes in this set? (electrode change only)</summary>
-      <label class="f" style="margin-top:8px">How many were chipped and swapped for good ones<input id="bChip" type="number" min="0" step="1" value="0" inputmode="numeric"></label>
-      <span class="hint" style="display:block;margin:-6px 0 0">Keep the chipped ones aside; they go on the chipped list for the maker.</span></details>
     <label class="f"><textarea id="bNote" aria-label="Note" placeholder="Note (optional; required if different values were used)"></textarea></label>
     <div class="btns"><button type="button" class="btn" id="bSave">Save burn</button><button type="button" class="btn alt" id="bCancel" hidden>Cancel editing</button></div>
     <div id="bMsg"></div>
