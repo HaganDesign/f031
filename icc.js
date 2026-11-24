@@ -138,6 +138,18 @@ const lowAt=()=>(I.lowSets||0)*(I.spec.per||8);   // reorder point, in electrode
 const machName=()=>{ const m=F&&(F.machines||[]).find(x=>x.id===I.mach); return m?m.name:""; };
 const f031Link=()=>`index.html${I.mach?`?m=${encodeURIComponent(I.mach)}`:""}`;
 
+// ---------- tally board: the dry-erase marks the shop used, four up and one across, two rows = filter change ----------
+function tallyRow(n){ let s=""; for(let i=0;i<Math.min(n,4);i++) s+=`<line x1="${10+i*14}" y1="6" x2="${10+i*14}" y2="46"/>`;
+  if(n>=5) s+=`<line x1="2" y1="40" x2="62" y2="12"/>`; return `<svg viewBox="0 0 66 52" width="66" height="52" aria-hidden="true"><g stroke="currentColor" stroke-width="4" stroke-linecap="round">${s}</g></svg>`; }
+function tallyHtml(){ const fs=burnsSinceFilter(), s=curSet(), per=I.spec.burns||5, filt=I.spec.filt||10;
+  const k=s&&!setFull(s)?s.burns.length:(s&&s.burns.length>=per&&openBurn()?per:0);
+  let n=fs?fs.n:null;
+  if(n===null){ return `<div class="tally"><div class="trow">${tallyRow(k)}<span>${k} of ${per} on this set</span></div></div>`; }
+  const r1=Math.min(n,per), r2=Math.max(0,Math.min(n-per,per));
+  const cut=!!openBurn();
+  const msg=n>=filt?(cut&&n===filt?"Last burn before filters and electrodes":"Filters and electrodes due"):n>=per&&n%per===0?(cut?"Last burn on this set":"Electrodes due"):`${n} of ${filt} on these filters`;
+  return `<div class="tally${n>=filt?" due":""}"><div class="trow">${tallyRow(r1)}${n>=per||r2?tallyRow(r2):""}</div><div class="tmsg">${msg}</div></div>`; }
+
 // ---------- new burn ----------
 let editId=null;
 function fillVals(v){ $("bOrb").value=f4(v.orbit); $("bYp").value=f4(v.yp); $("bYm").value=f4(v.ym); }
@@ -150,7 +162,7 @@ function renderEntry(){
   else if(fs&&I.spec.filt&&fs.n>=I.spec.filt-I.spec.burns) ban+=`<div class="banner warn">Filters are due after this set: ${fs.n} of ${I.spec.filt} burns since the last change on ${fmtDate(fs.lf.date)}.</div>`;
   if(h.qty<(I.spec.per||8)) ban+=`<div class="banner bad">Only ${h.qty} electrodes on hand, less than one set. Tell the admin.</div>`;
   else if(lowAt()&&h.qty<=lowAt()) ban+=`<div class="banner warn"><b>Order electrodes.</b> ${h.qty} on hand, ${Math.floor(h.qty/I.spec.per)} set${Math.floor(h.qty/I.spec.per)===1?"":"s"} left (the reorder point is ${I.lowSets}). Let the admin know.</div>`;
-  $("bBanner").innerHTML=ban;
+  $("bBanner").innerHTML=ban; $("bTally").innerHTML=tallyHtml();
   if(editId){ const {s,b}=findBurn(editId)||{}; if(!s) return stopEdit();
     $("bHead").innerHTML=`<b>Editing burn ${s.burns.indexOf(b)+1} of set ${setNo(s)}</b><span class="hint">Change what you need and tap Save changes.</span>`; $("bNew").hidden=true; $("bChipBox").hidden=true; $("bFinish").hidden=true; $("bForm").hidden=false; return; }
   const ob=openBurn();
