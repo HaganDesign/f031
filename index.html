@@ -48,8 +48,17 @@ table.log th{font-size:12px;color:var(--soft);text-transform:uppercase;letter-sp
 .list .item{display:flex;gap:8px;align-items:center;margin:6px 0}
 .list .item input{flex:1;min-width:0;padding:9px;font:inherit;border:1px solid var(--line);border-radius:8px}
 .list .item .btn.small{padding:6px 9px}
-.list .shows{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:-2px 0 12px 74px;font-size:13px;color:var(--muted)}
+.list .shows{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:-2px 0 12px 74px;font-size:13px;color:var(--soft)}
 .chip.mini{padding:5px 10px;font-size:13px}
+.list .shows select,.qbox{padding:6px 8px;font:inherit;font-size:14px;border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--ink)}
+.qbox{width:70px}
+.stockcard{border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin:8px 0}
+.stockcard .item{display:flex;gap:8px;align-items:center}.stockcard .item input{flex:1;min-width:0;padding:9px;font:inherit;border:1px solid var(--line);border-radius:8px}
+.onhand{font-size:15px;margin:8px 0 2px}.onhand b{font-size:26px}.onhand.low b{color:var(--bad)}
+.row3{display:flex;gap:8px;align-items:flex-end;margin-top:8px}.row3 .f{flex:1;margin:0}.row3 .btn{margin-bottom:2px}
+.stockcard details{margin-top:8px}.stockcard summary{cursor:pointer;font-size:14px;color:var(--acc)}
+.stockln{font-size:14px;margin:0 0 10px;padding:8px 10px;border-radius:8px;background:#eef4fb;color:var(--ink)}
+.stockln.warn{background:#fff6e0}.stockln.bad{background:#fbe9ec;color:var(--bad)}
 .list .shows .tybox{flex:0 1 220px;min-width:0;padding:7px 9px;font:inherit;font-size:14px;border:1px solid var(--line);border-radius:8px;color:var(--ink)}
 @media (max-width:560px){.list .shows{margin-left:0}}
 .btn:disabled{opacity:.35;cursor:default}
@@ -126,6 +135,7 @@ table.log th{font-size:12px;color:var(--soft);text-transform:uppercase;letter-sp
       <div class="chips" id="eChips"></div></div>
     <div class="f" style="margin:0 0 6px"><span style="font-size:14px;color:var(--soft);font-weight:600">Other</span>
       <div class="chips" id="eChipsO"></div></div>
+    <div id="eStock"></div>
     <label class="f"><textarea id="eOther" aria-label="Other, written" placeholder="Anything else, written out: oil brand and amount, tank cleaned, etc."></textarea></label>
     <div class="btns"><button type="button" class="btn" id="eSave">Save entry</button><button type="button" class="btn alt" id="eCancel" hidden>Cancel editing</button></div>
     <div id="eMsg"></div>
@@ -174,6 +184,10 @@ table.log th{font-size:12px;color:var(--soft);text-transform:uppercase;letter-sp
     <div class="list" id="sMach"></div>
     <div class="btns"><button type="button" class="btn alt small" id="sMachAdd">+ Add machine</button> <button type="button" class="btn alt small" id="sQr">Print QR codes</button></div>
     <p class="hint">Print QR codes makes one code per machine, with the name under it. Scanning a machine's code opens the log with that machine already picked.</p>
+    <h2 style="margin-top:22px">Filter stock</h2>
+    <p class="hint">Filters on the shelf. On hand is the last physical count, plus deliveries, minus what the entries since then used. Edits and deletes correct it by themselves. When the shelf doesn't match, enter a physical count; it becomes the new starting point. Old paper records typed in later never count against stock. Pick which button takes from which item, and how many, under the buttons below.</p>
+    <div id="sStock"></div>
+    <div class="btns"><button type="button" class="btn alt small" id="sStockAdd">+ Add stock item</button></div>
     <h2 style="margin-top:22px">Filter buttons</h2>
     <p class="hint">Filters only: these print in the FILTER CHANGE column. In the order shown; use the arrows to move one. Under each, "Shows on" picks which machine types get that button; All means every machine.</p>
     <div class="list" id="sOpt"></div>

@@ -15,7 +15,7 @@ const LS={get:k=>{try{return localStorage.getItem(k)}catch(e){return null}},set:
 const CFG=window.F031_CONFIG||null;
 
 // ---------- the shared log ----------
-function blank(){ return {app:APP,v:1,company:"",logo:"",btnTypes:{},machines:[],options:["Filters changed"],others:[],form:"F-031",rev:"-",entries:[],deleted:[]}; }
+function blank(){ return {app:APP,v:1,company:"",logo:"",btnTypes:{},btnStock:{},stock:[],stockLog:[],machines:[],options:["Filters changed"],others:[],form:"F-031",rev:"-",entries:[],deleted:[]}; }
 let D=blank(), SHA=null, TOKEN=null;
 const mySign=()=>LS.get("f031sign")||"";
 const hrs=v=>{ const m=/^\s*(\d+(?:\.\d+)?)(?::(\d{1,2}))?\s*$/.exec(String(v??"")); return m?(+m[1])+(m[2]?+m[2]/60:0):NaN; };
@@ -29,6 +29,19 @@ const sameT=(a,b)=>String(a).trim().toLowerCase()===String(b).trim().toLowerCase
 const allTypes=()=>{ const s=[]; D.machines.forEach(m=>{ const t=typeOf(m); if(t&&!s.some(x=>sameT(x,t))) s.push(t); }); return s; };
 const btnOn=(o,t)=>{ const T=allTypes(), L=((D.btnTypes||{})[o]||[]).filter(x=>T.some(y=>sameT(x,y)));   // types no machine has any more are ignored
   return !L.length||L.some(x=>sameT(x,t)); };   // no types picked = shows on every machine
+// ---------- filter stock: on hand = last physical count + received since - used by entries since ----------
+// Usage is worked out from the entries every time, so editing or deleting an entry corrects the count by itself.
+// An entry counts against stock only if it was entered after the count AND is dated on or after the count's day,
+// so typing in old paper records never touches the stock.
+const dayOf=iso=>{ const d=new Date(iso); return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); };
+const btnUse=o=>{ const u=(D.btnStock||{})[o]; return u&&(D.stock||[]).some(s=>s.id===u.item)&&u.qty>0?u:null; };
+function stockBase(it){ const c=(D.stockLog||[]).filter(e=>e.item===it.id&&e.kind==="count").sort((x,y)=>x.at<y.at?-1:1).pop();
+  return c?{qty:c.qty,at:c.at,by:c.by}:{qty:0,at:it.at,by:""}; }
+function stockUsed(it,b){ const day=dayOf(b.at); let n=0, list=[];
+  D.entries.forEach(e=>{ if(!(e.at>b.at&&e.date>=day)) return; let q=0; (e.filters||[]).forEach(o=>{ const u=btnUse(o); if(u&&u.item===it.id) q+=u.qty; }); if(q){ n+=q; list.push({e,q}); } });
+  return {n,list}; }
+function onHand(it){ const b=stockBase(it), recv=(D.stockLog||[]).filter(e=>e.item===it.id&&e.kind==="recv"&&e.at>b.at).reduce((s,e)=>s+e.qty,0);
+  return {qty:b.qty+recv-stockUsed(it,b).n, base:b, recv}; }
 const machName=id=>(D.machines.find(m=>m.id===id)||{}).name||"(removed machine)";
 const sorted=mid=>D.entries.filter(e=>e.mach===mid).sort((a,b)=>(a.date<b.date?-1:a.date>b.date?1:0)||((hrs(a.hours)||0)-(hrs(b.hours)||0))||(a.at<b.at?-1:1));
 
@@ -122,6 +135,9 @@ function renderChips(){
   const mt=typeOf(D.machines.find(m=>m.id===$("eMach").value));
   const grp=(el,all,none)=>{ const list=all.filter(o=>picked.has(o)||btnOn(o,mt)); el.innerHTML=list.map((o,i)=>`<button type="button" class="chip${picked.has(o)?" on":""}" data-i="${i}">${esc(o)}</button>`).join("")||`<span class="hint">${none}</span>`;
     el.querySelectorAll(".chip").forEach(c=>c.addEventListener("click",()=>{ const o=list[+c.dataset.i]; picked.has(o)?picked.delete(o):picked.add(o); renderChips(); })); };
+  const need={}; [...picked].forEach(o=>{ const u=btnUse(o); if(u) need[u.item]=(need[u.item]||0)+u.qty; });
+  $("eStock").innerHTML=Object.entries(need).map(([id,q])=>{ const it=D.stock.find(s=>s.id===id), h=onHand(it).qty, left=editId?null:h-q;
+    return `<div class="stockln${left!==null&&left<0?" bad":left!==null&&it.low&&left<=it.low?" warn":""}">Takes ${q} ${esc(it.name)} from stock &middot; ${h} on hand${left!==null?` &middot; ${left} after this entry`:""}${left!==null&&left<0?" (more than the count shows; tell the admin)":left!==null&&it.low&&left<=it.low?" (low, time to order)":""}</div>`; }).join("");
   grp($("eChips"),D.options,`No filter buttons set for ${esc(mt||"this machine")}. Add them in Setup.`); grp($("eChipsO"),D.others||[],"Nothing set here for this machine type. Write it below."); }
 function rowHtml(e,act){ return `<tr><td class="mono">${esc(e.hours)}</td><td class="mono">${fmtDate(e.date)}</td><td>${esc(e.sign)}</td><td>${esc(fCol(e))}</td><td>${esc(oCol(e))}${e.ed?` <span class="hint">(edited)</span>`:""}</td>${act?`<td style="white-space:nowrap"><button type="button" class="btn alt small" data-edit="${esc(e.id)}">Edit</button> <button type="button" class="btn danger small" data-del="${esc(e.id)}">Delete</button></td>`:""}</tr>`; }
 function renderEntry(){ fillMach($("eMach")); renderChips();
@@ -160,6 +176,8 @@ $("eSave").addEventListener("click",async()=>{
   if(id){ stopEdit(); say($("eMsg"),"good",`Changes saved: ${esc(machName(mach))}, hour meter ${esc(hours)}, dated ${fmtDate(date)}.`); }
   else { picked.clear(); $("eHours").value=""; $("eMins").value=""; $("eOther").value=""; say($("eMsg"),"good",`Saved: ${esc(machName(mach))}, hour meter ${esc(hours)}, dated ${fmtDate(date)}.`); }
   if(D.machines.some(m=>m.id===mach)) $("rMach").value=mach;   // Records follows the machine being entered
+  const used=[...new Set(filters.map(o=>(btnUse(o)||{}).item).filter(Boolean))].map(id=>D.stock.find(s=>s.id===id)).filter(Boolean);
+  if(used.length) $("eMsg").insertAdjacentHTML("beforeend",used.map(it=>{ const h=onHand(it).qty; return `<div class="msg ${h<0||(it.low&&h<=it.low)?"warn":"good"}" style="margin-top:6px">${esc(it.name)}: ${h} left in stock${h<0?". That's below zero, so the count needs checking.":it.low&&h<=it.low?". Low, time to order.":"."}</div>`; }).join(""));
   renderEntry();
 });
 
@@ -209,6 +227,7 @@ function merge(D,d){ let added=0, upd=0;
   const dead=new Set(D.deleted); D.entries=D.entries.filter(e=>!dead.has(e.id));
   (d.entries||[]).forEach(e=>{ if(!e||!e.id||dead.has(e.id)) return; const i=D.entries.findIndex(x=>x.id===e.id);
     if(i<0){ D.entries.push(e); added++; } else if((e.ed||e.at||"")>(D.entries[i].ed||D.entries[i].at||"")){ D.entries[i]=e; upd++; } });
+  if(!(D.stock||[]).length&&(d.stock||[]).length){ D.stock=d.stock; D.stockLog=d.stockLog||[]; D.btnStock=d.btnStock||{}; }
   Object.entries(d.btnTypes||{}).forEach(([k,L])=>{ D.btnTypes=D.btnTypes||{}; if(!D.btnTypes[k]&&Array.isArray(L)) D.btnTypes[k]=L.slice(); });
   return {added,upd}; }
 $("xLoad").addEventListener("change",async ev=>{ const files=[...ev.target.files]; ev.target.value=""; if(!files.length||!adminOK) return;
@@ -223,7 +242,7 @@ function renderSetup(){
   const ud=(k,i,n)=>`<button type="button" class="btn alt small" data-up="${k},${i}" aria-label="Move up"${i?"":" disabled"}>&#9650;</button><button type="button" class="btn alt small" data-dn="${k},${i}" aria-label="Move down"${i<n-1?"":" disabled"}>&#9660;</button>`;
   $("sMach").innerHTML=D.machines.map((m,i)=>`<div class="item">${ud("m",i,D.machines.length)}<input data-mi="${i}" value="${esc(m.name)}" aria-label="Machine name"><button type="button" class="btn danger small" data-mdel="${i}">Remove</button></div><div class="shows">Type: <input data-mt="${i}" list="typeList" value="${esc(typeOf(m))}" aria-label="Machine type for ${esc(m.name)}" class="tybox"></div>`).join("")||`<p class="hint">No machines yet.</p>`;
   const TY=allTypes(); $("typeList").innerHTML=TY.map(t=>`<option value="${esc(t)}">`).join("");
-  const blist=(k,a,other)=>a.map((o,i)=>`<div class="item">${ud(k,i,a.length)}<input data-bi="${k},${i}" value="${esc(o)}" aria-label="Button text"><button type="button" class="btn alt small" data-bmv="${k},${i}">${other?"To Filter":"To Other"}</button><button type="button" class="btn danger small" data-bdel="${k},${i}" aria-label="Remove">&#10005;</button></div>${TY.length>1?`<div class="shows">Shows on: <button type="button" class="chip mini${TY.some(t=>((D.btnTypes||{})[o]||[]).some(x=>sameT(x,t)))?"":" on"}" data-bt="${k},${i},*">All</button>${TY.map((t,j)=>`<button type="button" class="chip mini${(D.btnTypes||{})[o]&&D.btnTypes[o].some(x=>sameT(x,t))?" on":""}" data-bt="${k},${i},${j}">${esc(t)}</button>`).join("")}</div>`:""}`).join("")||`<p class="hint">No buttons yet.</p>`;
+  const blist=(k,a,other)=>a.map((o,i)=>`<div class="item">${ud(k,i,a.length)}<input data-bi="${k},${i}" value="${esc(o)}" aria-label="Button text"><button type="button" class="btn alt small" data-bmv="${k},${i}">${other?"To Filter":"To Other"}</button><button type="button" class="btn danger small" data-bdel="${k},${i}" aria-label="Remove">&#10005;</button></div>${TY.length>1?`<div class="shows">Shows on: <button type="button" class="chip mini${TY.some(t=>((D.btnTypes||{})[o]||[]).some(x=>sameT(x,t)))?"":" on"}" data-bt="${k},${i},*">All</button>${TY.map((t,j)=>`<button type="button" class="chip mini${(D.btnTypes||{})[o]&&D.btnTypes[o].some(x=>sameT(x,t))?" on":""}" data-bt="${k},${i},${j}">${esc(t)}</button>`).join("")}</div>`:""}${(D.stock||[]).length?`<div class="shows">Takes from stock: <select data-bs="${k},${i}" aria-label="Stock item for ${esc(o)}"><option value="">Nothing</option>${D.stock.map(s=>`<option value="${esc(s.id)}"${((D.btnStock||{})[o]||{}).item===s.id?" selected":""}>${esc(s.name)}</option>`).join("")}</select>${btnUse(o)?` <input data-bq="${k},${i}" type="number" min="1" step="1" value="${btnUse(o).qty}" aria-label="How many" class="qbox"> each time`:""}</div>`:""}`).join("")||`<p class="hint">No buttons yet.</p>`;
   $("sOpt").innerHTML=blist("o",D.options,false); $("sOth").innerHTML=blist("t",D.others||[],true);
   $("sSign").value=mySign(); $("sForm").value=D.form; $("sRev").value=D.rev; $("sCo").value=D.company||"";
   $("sLogoClear").hidden=!D.logo; $("sLogoPrev").innerHTML=D.logo?`<img src="${D.logo}" alt="Current logo"><span class="hint">Current logo</span>`:`<span class="hint">No logo yet. PNG with a transparent background looks best.</span>`;
@@ -246,16 +265,53 @@ function renderSetup(){
   document.querySelectorAll("#tab-setup [data-bt]").forEach(b=>b.addEventListener("click",()=>{ const [k,i,j]=b.dataset.bt.split(","), name=arr(D,k)[+i], t=j==="*"?null:TY[+j];
     S(d=>{ const bt=d.btnTypes=d.btnTypes||{}; if(!t){ delete bt[name]; return; }
       let L=(bt[name]||[]).slice(); L=L.some(x=>sameT(x,t))?L.filter(x=>!sameT(x,t)):[...L,t]; if(L.length) bt[name]=L; else delete bt[name]; },`Setup: ${name} shows on ${t||"all"}`); }));
+  document.querySelectorAll("#tab-setup [data-bs]").forEach(el=>el.addEventListener("change",()=>{ const [k,i]=el.dataset.bs.split(","), name=arr(D,k)[+i], v=el.value;
+    S(d=>{ const bs=d.btnStock=d.btnStock||{}; if(!v) delete bs[name]; else bs[name]={item:v,qty:(bs[name]&&bs[name].qty)||1}; },`Setup: ${name} takes from stock`); }));
+  document.querySelectorAll("#tab-setup [data-bq]").forEach(el=>el.addEventListener("change",()=>{ const [k,i]=el.dataset.bq.split(","), name=arr(D,k)[+i], q=Math.round(+el.value);
+    if(!(q>0)){ el.value=(btnUse(name)||{}).qty||1; return; }
+    S(d=>{ const u=(d.btnStock||{})[name]; if(!u) return false; u.qty=q; },`Setup: ${name} takes ${q}`); }));
+  renderStock(S);
   $("sMach").querySelectorAll("[data-mdel]").forEach(b=>b.addEventListener("click",()=>{ const m=D.machines[+b.dataset.mdel], n=D.entries.filter(e=>e.mach===m.id).length;
     if(n) return say($("sMsg"),"bad",`${esc(m.name)} has ${n} entr${n===1?"y":"ies"}, so it stays. Rename it instead if it changed.`);
     S(d=>{ d.machines=d.machines.filter(q=>q.id!==m.id); },`Setup: remove machine ${m.name}`); }));
   document.querySelectorAll("#tab-setup [data-bi]").forEach(el=>el.addEventListener("change",()=>{ const [k,i]=el.dataset.bi.split(","), old=arr(D,k)[+i], v=el.value.trim(); if(!v){ el.value=old; return; }
-    S(d=>{ const a=arr(d,k), x=a.indexOf(old); if(x<0) return false; a[x]=v; const bt=d.btnTypes||{}; if(bt[old]){ bt[v]=bt[old]; delete bt[old]; } },`Setup: rename button to ${v}`); }));
+    S(d=>{ const a=arr(d,k), x=a.indexOf(old); if(x<0) return false; a[x]=v; const bt=d.btnTypes||{}; if(bt[old]){ bt[v]=bt[old]; delete bt[old]; } const bs=d.btnStock||{}; if(bs[old]){ bs[v]=bs[old]; delete bs[old]; } },`Setup: rename button to ${v}`); }));
   document.querySelectorAll("#tab-setup [data-bdel]").forEach(b=>b.addEventListener("click",()=>{ const [k,i]=b.dataset.bdel.split(","), name=arr(D,k)[+i];
-    S(d=>{ const a=arr(d,k), x=a.indexOf(name); if(x<0) return false; a.splice(x,1); if(d.btnTypes) delete d.btnTypes[name]; },`Setup: remove button ${name}`); }));
+    S(d=>{ const a=arr(d,k), x=a.indexOf(name); if(x<0) return false; a.splice(x,1); if(d.btnTypes) delete d.btnTypes[name]; if(d.btnStock) delete d.btnStock[name]; },`Setup: remove button ${name}`); }));
   document.querySelectorAll("#tab-setup [data-bmv]").forEach(b=>b.addEventListener("click",()=>{ const [k,i]=b.dataset.bmv.split(","), name=arr(D,k)[+i];
     S(d=>{ const a=arr(d,k), x=a.indexOf(name); if(x<0) return false; a.splice(x,1); arr(d,k==="o"?"t":"o").push(name); },`Setup: move ${name} to ${k==="o"?"Other":"Filter"}`); }));
 }
+function renderStock(S){
+  const fmt=iso=>{ const d=new Date(iso); return `${d.getMonth()+1}/${d.getDate()}/${d.getFullYear()}`; };
+  $("sStock").innerHTML=(D.stock||[]).map((it,i)=>{ const h=onHand(it), u=stockUsed(it,h.base);
+    const log=(D.stockLog||[]).filter(e=>e.item===it.id).sort((x,y)=>x.at<y.at?1:-1).slice(0,4);
+    const btns=Object.entries(D.btnStock||{}).filter(([o,v])=>v.item===it.id).map(([o,v])=>`${esc(o)} (${v.qty})`).join(", ");
+    return `<div class="stockcard"><div class="item"><input data-sn="${i}" value="${esc(it.name)}" aria-label="Stock item name"><button type="button" class="btn danger small" data-sdel="${i}">Remove</button></div>
+    <div class="onhand${h.qty<0||(it.low&&h.qty<=it.low)?" low":""}"><b>${h.qty}</b> on hand</div>
+    <div class="hint">Counted ${h.base.by?`${h.base.qty} on ${fmt(h.base.at)} by ${esc(h.base.by)}`:`from 0 when added ${fmt(h.base.at)}`}${h.recv||u.n?`. Since then: ${[h.recv?`+${h.recv} received`:"",u.n?`-${u.n} used in ${u.list.length} entr${u.list.length===1?"y":"ies"}`:""].filter(Boolean).join(", ")}`:""}.${btns?` Taken by: ${btns}.`:` No button takes from it yet; set that under the buttons below.`}</div>
+    <div class="row3"><label class="f">Received<input type="number" min="1" step="1" data-srq="${i}" placeholder="how many"></label><button type="button" class="btn alt small" data-srb="${i}">Add received</button></div>
+    <div class="row3"><label class="f">Physical count<input type="number" min="0" step="1" data-scq="${i}" placeholder="counted on the shelf"></label><button type="button" class="btn alt small" data-scb="${i}">Set count</button></div>
+    <div class="row3"><label class="f">Warn when down to<input type="number" min="0" step="1" data-slow="${i}" value="${it.low||""}" placeholder="e.g. 12"></label></div>
+    ${u.list.length?`<details><summary>Entries counted since the last count (${u.list.length})</summary>${u.list.slice(-15).reverse().map(x=>`<div class="hint">${fmtDate(x.e.date)} &middot; ${esc(machName(x.e.mach))} &middot; ${esc(x.e.sign)} &middot; -${x.q}</div>`).join("")}</details>`:""}
+    ${log.length?`<details><summary>Counts and deliveries</summary>${log.map(e=>`<div class="hint">${fmt(e.at)} &middot; ${e.kind==="count"?`counted ${e.qty}`:`received ${e.qty}`} &middot; ${esc(e.by)}</div>`).join("")}</details>`:""}</div>`; }).join("")||`<p class="hint">No stock items yet.</p>`;
+  const who=()=>mySign()||"ADMIN";
+  $("sStock").querySelectorAll("[data-sn]").forEach(el=>el.addEventListener("change",()=>{ const it=D.stock[+el.dataset.sn], v=el.value.trim(); if(!v){ el.value=it.name; return; }
+    S(d=>{ const x=d.stock.find(q=>q.id===it.id); if(!x) return false; x.name=v; },`Stock: rename to ${v}`); }));
+  $("sStock").querySelectorAll("[data-sdel]").forEach(b=>b.addEventListener("click",()=>{ const it=D.stock[+b.dataset.sdel];
+    if(!confirm(`Remove ${it.name} from stock tracking? Buttons stop taking from it. Entries are not changed.`)) return;
+    S(d=>{ d.stock=d.stock.filter(q=>q.id!==it.id); d.stockLog=(d.stockLog||[]).filter(e=>e.item!==it.id); Object.keys(d.btnStock||{}).forEach(o=>{ if(d.btnStock[o].item===it.id) delete d.btnStock[o]; }); },`Stock: remove ${it.name}`); }));
+  $("sStock").querySelectorAll("[data-srb]").forEach(b=>b.addEventListener("click",()=>{ const i=+b.dataset.srb, it=D.stock[i], q=Math.round(+document.querySelector(`[data-srq="${i}"]`).value);
+    if(!(q>0)) return say($("sMsg"),"bad","Enter how many came in.");
+    S(d=>{ (d.stockLog=d.stockLog||[]).push({id:uid(),item:it.id,kind:"recv",qty:q,at:new Date().toISOString(),by:who()}); },`Stock: received ${q} ${it.name}`); }));
+  $("sStock").querySelectorAll("[data-scb]").forEach(b=>b.addEventListener("click",()=>{ const i=+b.dataset.scb, it=D.stock[i], el=document.querySelector(`[data-scq="${i}"]`), q=Math.round(+el.value);
+    if(el.value===""||!(q>=0)) return say($("sMsg"),"bad","Enter the number counted on the shelf.");
+    const h=onHand(it).qty; if(q!==h&&!confirm(`The log shows ${h} on hand. Set it to ${q}, as counted? Everything entered from now on counts down from ${q}.`)) return;
+    S(d=>{ (d.stockLog=d.stockLog||[]).push({id:uid(),item:it.id,kind:"count",qty:q,at:new Date().toISOString(),by:who()}); },`Stock: counted ${q} ${it.name}`); }));
+  $("sStock").querySelectorAll("[data-slow]").forEach(el=>el.addEventListener("change",()=>{ const it=D.stock[+el.dataset.slow], q=Math.max(0,Math.round(+el.value||0));
+    S(d=>{ const x=d.stock.find(s=>s.id===it.id); if(!x) return false; x.low=q; },`Stock: warn at ${q} ${it.name}`); }));
+}
+$("sStockAdd").addEventListener("click",async()=>{ if(!adminOK) return adminView(); await commit(d=>{ (d.stock=d.stock||[]).push({id:uid(),name:"New stock item",low:0,at:new Date().toISOString()}); },"Stock: add item");
+  const ins=$("sStock").querySelectorAll("[data-sn]"), i=ins[ins.length-1]; if(i){ i.focus(); i.select(); } });
 async function addItem(k,txt){ if(!adminOK) return adminView(); const ok=await commit(d=>{ if(k==="m") d.machines.push({id:uid(),name:txt}); else (k==="o"?d.options:(d.others=d.others||[])).push(txt); },`Setup: add ${txt}`);
   if(!ok) return; const box=k==="m"?$("sMach"):k==="o"?$("sOpt"):$("sOth"), ins=box.querySelectorAll("input"), i=ins[ins.length-1]; if(i){ i.focus(); i.select(); } }
 $("sMachAdd").addEventListener("click",()=>addItem("m","New machine"));
