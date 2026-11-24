@@ -111,6 +111,7 @@ const curSet=()=>I.sets[I.sets.length-1]||null;
 const setFull=s=>!s||s.burns.length>=s.spec.burns;
 const expect=(spec,k)=>({orbit:spec.orbit+spec.step*(k-1), yp:spec.yp+spec.step*(k-1), ym:spec.ym-spec.step*(k-1)});
 const setNo=s=>I.sets.indexOf(s)+1;
+const openBurn=()=>{ const s=curSet(); const b=s&&s.burns[s.burns.length-1]; return b&&!b.rt&&!b.noTime?{s,b}:null; };
 function nextBurn(){ const s=curSet(); if(setFull(s)) return {newSet:true,k:1,spec:I.spec}; return {newSet:false,set:s,k:s.burns.length+1,spec:s.spec}; }
 // electrodes: last count + received - a full set per new set - chipped swaps - scrapped, since the count
 // Good electrodes: last count + received - a full set per new set - chipped (set changes and found) - other scrap, since the count.
@@ -146,16 +147,32 @@ function renderEntry(){
   else if(lowAt()&&h.qty<=lowAt()) ban+=`<div class="banner warn"><b>Order electrodes.</b> ${h.qty} on hand, ${Math.floor(h.qty/I.spec.per)} set${Math.floor(h.qty/I.spec.per)===1?"":"s"} left (the reorder point is ${I.lowSets}). Let the admin know.</div>`;
   $("bBanner").innerHTML=ban;
   if(editId){ const {s,b}=findBurn(editId)||{}; if(!s) return stopEdit();
-    $("bHead").innerHTML=`<b>Editing burn ${s.burns.indexOf(b)+1} of set ${setNo(s)}</b><span class="hint">Change what you need and tap Save changes.</span>`; $("bNew").hidden=true; return; }
+    $("bHead").innerHTML=`<b>Editing burn ${s.burns.indexOf(b)+1} of set ${setNo(s)}</b><span class="hint">Change what you need and tap Save changes.</span>`; $("bNew").hidden=true; $("bChipBox").hidden=true; $("bFinish").hidden=true; $("bForm").hidden=false; return; }
+  const ob=openBurn();
+  $("bFinish").hidden=!ob; $("bForm").hidden=!!ob; if(ob){ $("bNew").hidden=true; $("bChipBox").hidden=true; }
+  if(ob){ const k=ob.s.burns.length;
+    $("bHead").innerHTML=`<b>Set ${setNo(ob.s)} &middot; burn ${k} of ${ob.s.spec.burns}</b><span class="hint">P/N ${esc(I.pn)}${machName()?` &middot; ${esc(machName())}`:""} &middot; ${h.qty} electrodes on hand</span>`;
+    $("bFinTxt").innerHTML=`<b>Cutting now: S/N ${esc(ob.b.sn)}</b><br>Orbit ${f4(ob.b.orbit)} &middot; Y+ ${f4(ob.b.yp)} &middot; Y- ${f4(ob.b.ym)} &middot; started by ${esc(ob.b.sign)} ${shortDate(ob.b.date)}<br>When it's done cutting, enter the run time. The next part comes after that.`;
+    if(!$("bFinSign").value) $("bFinSign").value=mySign(); return; }
   const nb=nextBurn();
   $("bHead").innerHTML=`<b>Set ${nb.newSet?I.sets.length+1:setNo(nb.set)} &middot; burn ${nb.k} of ${nb.spec.burns}</b><span class="hint">P/N ${esc(I.pn)}${machName()?` &middot; ${esc(machName())}`:""} &middot; ${h.qty} electrodes on hand</span>`;
-  $("bNew").hidden=!nb.newSet;
+  $("bNew").hidden=!nb.newSet; $("bChipBox").hidden=!nb.newSet; if(!nb.newSet) $("bChipBox").open=false;
   if(!$("bDiff").checked) fillVals(expect(nb.spec,nb.k));
   if(!$("bDate").value) $("bDate").value=today();
   if(!$("bSign").value) $("bSign").value=mySign();
   $("bStock").innerHTML=nb.newSet?`Starting this set takes ${I.spec.per} electrodes, plus any chipped ones swapped. Keep the chipped ones aside for the maker.`:"";
 }
 $("bDiff").addEventListener("change",()=>{ setDiff($("bDiff").checked); if(!$("bDiff").checked&&!editId){ const nb=nextBurn(); fillVals(expect(nb.spec,nb.k)); } });
+async function finishBurn(rt,note){ const ob=openBurn(); if(!ob) return; const id=ob.b.id, by=$("bFinSign").value.trim().toUpperCase()||mySign(), now=new Date().toISOString();
+  const ok=await commit(d=>{ for(const s of d.sets){ const b=s.burns.find(x=>x.id===id); if(b){ if(b.rt||b.noTime) return false; if(rt) b.rt=rt; else { b.noTime=true; b.note=[b.note,note].filter(Boolean).join(" / "); } b.rtBy=by; b.rtAt=now; return; } } return false; },
+    rt?`ICC run time: ${ob.b.sn} ${rt} ${by}`:`ICC no time: ${ob.b.sn} ${by}`);
+  if(ok==="skip"){ say($("bMsg"),"warn","Someone already closed that burn. Here's the latest."); renderEntry(); return; }
+  if(!ok) return; $("bFinRT").value=""; $("bFinNote").value=""; document.querySelector("#bFinish details").open=false; window.scrollTo(0,0);
+  say($("bMsg"),"good",rt?`Run time ${esc(rt)} saved for S/N ${esc(ob.b.sn)}.`:`S/N ${esc(ob.b.sn)} closed without a time.`); renderEntry();
+  const s=curSet(); if(setFull(s)){ const fs=burnsSinceFilter(); await dialog("Set finished",`<p>That was burn ${s.spec.burns}. The next part starts a new set of ${I.spec.per} electrodes, back at orbit ${f4(I.spec.orbit)}.</p>${fs&&I.spec.filt&&fs.n>=I.spec.filt?`<p><b>Filters are due now.</b> Change them and log it on F-031 before the next burn.</p>`:fs&&I.spec.filt&&fs.n+I.spec.burns>=I.spec.filt?`<p><b>Filters are due after the next set.</b></p>`:""}`,[{t:"OK",v:0}]); } }
+$("bFinGo").addEventListener("click",()=>{ const rt=$("bFinRT").value.trim(); if(!/^\d{1,3}(:[0-5]\d)?$/.test(rt)) return say($("bMsg"),"bad","Run time as hours:minutes, like 3:25."); finishBurn(rt); });
+$("bFinRT").addEventListener("keydown",e=>{ if(e.key==="Enter") $("bFinGo").click(); });
+$("bFinNo").addEventListener("click",()=>{ const n=$("bFinNote").value.trim(); if(!n) return say($("bMsg"),"bad","Write what happened before closing it without a time."); finishBurn("",n); });
 function findBurn(id){ for(const s of I.sets){ const b=s.burns.find(x=>x.id===id); if(b) return {s,b}; } return null; }
 function startEdit(id){ const f=findBurn(id); if(!f) return; editId=id; document.querySelector('nav button[data-tab="entry"]').click();
   const b=f.b; $("bSN").value=b.sn; fillVals(b); setDiff(!!b.diff); $("bRT").value=b.rt||""; $("bSign").value=b.sign; $("bDate").value=b.date; $("bNote").value=b.note||"";
@@ -190,13 +207,15 @@ $("bSave").addEventListener("click",async()=>{
     const go=await dialog("Start a new electrode set?",`<p>Set ${I.sets.length+1}, burn 1. Load a fresh set of ${I.spec.per} electrodes and run the start values:</p><p class="big"><b>Orbit ${f4(ex.orbit)} &middot; Y+ ${f4(ex.yp)} &middot; Y- ${f4(ex.ym)}</b></p><p>This takes ${take} good electrode${take===1?"":"s"} from stock${chip?` (${chip} chipped go on the chipped pile for the maker)`:""}: ${h} on hand, ${h-take} after.</p>`,[{t:"Start the new set",v:true},{t:"Cancel",v:false,alt:true}]);
     if(!go) return; }
   const burn={id:uid(),sn,orbit,yp,ym,diff:diff||undefined,rt,sign,date,note,at:now};
-  const ok=await commit(d=>{ const s=d.sets[d.sets.length-1];
+  const ok=await commit(d=>{ const s=d.sets[d.sets.length-1], lb=s&&s.burns[s.burns.length-1];
+    if(lb&&!lb.rt&&!lb.noTime) return false;   // another phone started a burn that's still cutting
     if(nb.newSet){ if(s&&s.burns.length<s.spec.burns) return false; d.sets.push({id:uid(),at:now,by:sign,spec:JSON.parse(JSON.stringify(d.spec)),per:d.spec.per,chip,burns:[burn]}); }
     else { if(!s||s.id!==nb.set.id||s.burns.length!==nb.k-1) return false; s.burns.push(burn); } },`ICC burn ${nb.k}: ${sn} ${sign}`);
   if(ok==="skip"){ say($("bMsg"),"warn","Someone else saved a burn at the same moment. Check the set and burn number above, then save again."); renderEntry(); return; }
   if(!ok) return;
-  ["bSN","bRT","bNote"].forEach(id=>$(id).value=""); $("bChip").value="0"; setDiff(false);
-  say($("bMsg"),"good",`Saved: burn ${nb.k} of set ${I.sets.length}, S/N ${esc(sn)}.`); renderEntry();
+  ["bSN","bRT","bNote"].forEach(id=>$(id).value=""); $("bChip").value="0"; $("bChipBox").open=false; setDiff(false);
+  say($("bMsg"),"good",`Saved: burn ${nb.k} of set ${I.sets.length}, S/N ${esc(sn)}.${rt?"":" Enter the run time here when it's done cutting."}`); renderEntry();
+  if(!rt) return;   // still cutting: the set-finished and filter messages come when the run time goes in
   const fs=burnsSinceFilter(), s=curSet();
   if(fs&&I.spec.filt&&fs.n>=I.spec.filt) await dialog("Filters are due",`<p>${fs.n} burns since the last filter change on ${esc(machName())}. Change the filters before the next burn, then log it on F-031.</p>`,[{t:"Open F-031",v:1},{t:"Later",v:0,alt:true}]).then(v=>{ if(v) location.href=f031Link(); });
   else if(setFull(s)) await dialog("Set finished",`<p>That was burn ${s.spec.burns}. The next burn starts a new set of ${I.spec.per} electrodes, back at orbit ${f4(I.spec.orbit)}.</p>${fs&&I.spec.filt&&fs.n+I.spec.burns>=I.spec.filt?`<p><b>Filters are due after the next set.</b></p>`:""}`,[{t:"OK",v:0}]);
@@ -207,7 +226,7 @@ const inRange=s=>{ const fr=$("pFrom").value, to=$("pTo").value; return s.burns.
 function renderRecords(){ const last=curSet();
   $("rList").innerHTML=I.sets.slice().reverse().map(s=>`<h3 style="margin:18px 0 6px">Set ${setNo(s)} <span class="hint" style="font-weight:normal">started ${fmtDate(s.burns[0]?s.burns[0].date:dayOf(s.at))} by ${esc(s.by)}${s.chip?` &middot; ${s.chip} chipped swapped`:""}</span></h3>
     <div class="tbl"><table class="log runtbl"><thead><tr><th>#</th><th>Serial Number</th><th>Orbit</th><th>Y+</th><th>Y-</th><th>Run Time</th><th>Initial/Date</th><th></th></tr></thead><tbody>
-    ${s.burns.map((b,i)=>`<tr><td>${i+1}</td><td class="l">${esc(b.sn)}${b.note?`<div class="hint">${esc(b.note)}</div>`:""}</td><td class="${b.diff?"off":""}">${f4(b.orbit)}</td><td class="${b.diff?"off":""}">${f4(b.yp)}</td><td class="${b.diff?"off":""}">${f4(b.ym)}</td><td>${esc(b.rt||"")}</td><td>${esc(b.sign)} ${shortDate(b.date)}${b.ed?` <span class="hint">(edited)</span>`:""}</td>
+    ${s.burns.map((b,i)=>`<tr><td>${i+1}</td><td class="l">${esc(b.sn)}${b.note?`<div class="hint">${esc(b.note)}</div>`:""}</td><td class="${b.diff?"off":""}">${f4(b.orbit)}</td><td class="${b.diff?"off":""}">${f4(b.yp)}</td><td class="${b.diff?"off":""}">${f4(b.ym)}</td><td>${b.rt?esc(b.rt):b.noTime?`<span class="hint">no time</span>`:`<span class="hint">cutting</span>`}</td><td>${esc(b.sign)} ${shortDate(b.date)}${b.ed?` <span class="hint">(edited)</span>`:""}</td>
       <td style="white-space:nowrap"><button type="button" class="btn alt small" data-edit="${esc(b.id)}">Edit</button>${s===last&&i===s.burns.length-1?` <button type="button" class="btn danger small" data-del="${esc(b.id)}">Delete</button>`:""}</td></tr>`).join("")}
     </tbody></table></div>`).join("")||`<p class="hint">No burns yet.</p>`;
   $("rList").querySelectorAll("[data-edit]").forEach(b=>b.addEventListener("click",()=>startEdit(b.dataset.edit)));
@@ -215,7 +234,7 @@ function renderRecords(){ const last=curSet();
     if(!confirm(`Delete burn ${f.s.burns.length}, S/N ${f.b.sn}?${f.s.burns.length===1?` That removes set ${setNo(f.s)} too, and its electrodes go back on the count.`:""} It stays in the log's history on GitHub.`)) return;
     await commit(d=>{ const s=d.sets[d.sets.length-1]; if(!s||!s.burns.length||s.burns[s.burns.length-1].id!==f.b.id) return false; s.burns.pop(); if(!s.burns.length) d.sets.pop(); d.deleted.push(f.b.id); },`ICC delete: ${f.b.sn}`); })); }
 function sheetHtml(s){ const rows=[]; for(let i=0;i<s.spec.burns;i++){ const b=s.burns[i];
-    rows.push(b?`<tr><td>${i+1}</td><td class="sn">S/N ${esc(b.sn)}</td><td>${f4(b.orbit)}</td><td>${f4(b.yp)}</td><td>${f4(b.ym)}</td><td>${esc(b.rt||"")}</td><td>${esc(b.sign)} ${shortDate(b.date)}</td></tr>`:`<tr><td>${i+1}</td><td class="sn">S/N</td><td></td><td></td><td></td><td></td><td></td></tr>`); }
+    rows.push(b?`<tr><td>${i+1}</td><td class="sn">S/N ${esc(b.sn)}</td><td>${f4(b.orbit)}</td><td>${f4(b.yp)}</td><td>${f4(b.ym)}</td><td>${b.rt?esc(b.rt):b.noTime?`<span class="hint">no time</span>`:`<span class="hint">cutting</span>`}</td><td>${esc(b.sign)} ${shortDate(b.date)}</td></tr>`:`<tr><td>${i+1}</td><td class="sn">S/N</td><td></td><td></td><td></td><td></td><td></td></tr>`); }
   const notes=s.burns.map((b,i)=>b.note?`Burn ${i+1}: ${esc(b.note)}`:"").filter(Boolean);
   return `<div class="f30"><div class="ttl">ICC ORBIT SHEET P/N ${esc(I.pn)}</div>
     <table><colgroup><col style="width:5%"><col style="width:20%"><col style="width:13%"><col style="width:13%"><col style="width:13%"><col style="width:16%"><col style="width:20%"></colgroup>
