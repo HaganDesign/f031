@@ -106,6 +106,8 @@ table.log th{font-size:12px;color:var(--soft);text-transform:uppercase;letter-sp
 .big{font-size:15px}
 .expect{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:0 0 12px}
 .expect .f{margin:0}
+.cnt3{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.cnt3 .f{margin:0}
+.stockcard h3{font-size:15px}
 .expect input{font-variant-numeric:tabular-nums}
 .expect input[readonly]{background:#f1f4f7;color:var(--ink)}
 .off{color:var(--bad);font-weight:600}
@@ -148,8 +150,8 @@ table.log th{font-size:12px;color:var(--soft);text-transform:uppercase;letter-sp
     <div class="runhead" id="bHead"></div>
     <div id="bNew" hidden>
       <div class="banner info"><b>New electrode set.</b> The last set has done its <span class="nBurns">5</span> burns. Load a fresh set of <span class="nSet">8</span> electrodes. The orbit and depths go back to the start values below.</div>
-      <label class="f">Chipped electrodes replaced from another box<input id="bChip" type="number" min="0" step="1" value="0" inputmode="numeric"></label>
-      <span class="hint" style="display:block;margin:-6px 0 12px">If a corner came in chipped and you swapped it for one from another box, enter how many. They come off the electrode count too.</span>
+      <label class="f">Chipped electrodes swapped out of this set<input id="bChip" type="number" min="0" step="1" value="0" inputmode="numeric"></label>
+      <span class="hint" style="display:block;margin:-6px 0 12px">Swapped any for good ones from another set? Enter how many. Keep the chipped ones aside; they go on the chipped list for the maker.</span>
     </div>
     <label class="f">Serial number (part S/N)<input id="bSN" type="text" autocapitalize="characters" placeholder="S/N"></label>
     <div class="expect">
@@ -194,7 +196,7 @@ table.log th{font-size:12px;color:var(--soft);text-transform:uppercase;letter-sp
     <div id="sAdmin" hidden>
       <div class="btns" style="justify-content:flex-end"><button type="button" class="btn alt small" id="sAdLock">Lock settings</button></div>
       <h2>Electrode stock</h2>
-      <p class="hint">Counted one electrode at a time, so opened boxes and loose ones all count. On hand is the last physical count, plus deliveries, minus <span class="nSet">8</span> for every new set started and 1 for every chipped one replaced since then. Old sheets typed in later never count against it.</p>
+      <p class="hint">Counted one electrode at a time, so opened sets and loose spares all count. Good on hand is the last physical count, plus deliveries, minus <span class="nSet">8</span> for every new set started and 1 for every chipped one found since. Chipped ones are kept as their own pile for the maker until marked reported. Old sheets typed in later never count against stock.</p>
       <div id="sStock"></div>
       <h2 style="margin-top:22px">Start values (burn 1 of every set)</h2>
       <div class="row2">

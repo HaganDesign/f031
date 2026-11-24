@@ -20,7 +20,7 @@ const num=v=>{ const x=parseFloat(String(v).trim()); return isFinite(x)?x:NaN; }
 
 function blank(){ return {app:APP,v:1,pn:"1704612",form:"F-030",rev:"-",mach:"",
   spec:{orbit:0.0195,yp:0.512,ym:-0.465,step:0.0005,burns:5,per:8,filt:10},
-  sets:[],stockLog:[],lowSets:8,stockAt:new Date().toISOString(),deleted:[]}; }
+  sets:[],stockLog:[],lowSets:8,boxSets:12,stockAt:new Date().toISOString(),deleted:[]}; }
 let I=blank(), SHA=null, F=null, TOKEN=null, adminOK=false;
 const mySign=()=>LS.get("f031sign")||"";
 
@@ -113,11 +113,16 @@ const expect=(spec,k)=>({orbit:spec.orbit+spec.step*(k-1), yp:spec.yp+spec.step*
 const setNo=s=>I.sets.indexOf(s)+1;
 function nextBurn(){ const s=curSet(); if(setFull(s)) return {newSet:true,k:1,spec:I.spec}; return {newSet:false,set:s,k:s.burns.length+1,spec:s.spec}; }
 // electrodes: last count + received - a full set per new set - chipped swaps - scrapped, since the count
-function eBase(){ const c=I.stockLog.filter(e=>e.kind==="count").sort((x,y)=>x.at<y.at?-1:1).pop(); return c?{qty:c.qty,at:c.at,by:c.by}:{qty:0,at:I.stockAt,by:""}; }
-function eHand(){ const b=eBase(), day=dayOf(b.at); let recv=0, scrap=0, used=0, sets=0, chip=0;
-  I.stockLog.forEach(e=>{ if(e.at<=b.at) return; if(e.kind==="recv") recv+=e.qty; if(e.kind==="scrap") scrap+=e.qty; });
+// Good electrodes: last count + received - a full set per new set - chipped (set changes and found) - other scrap, since the count.
+// Chipped pile: chipped at the last count + chipped since - reported/sent back to the maker since.
+function eBase(){ const c=I.stockLog.filter(e=>e.kind==="count").sort((x,y)=>x.at<y.at?-1:1).pop(); return c?{qty:c.qty,chipped:c.chipped||0,at:c.at,by:c.by}:{qty:0,chipped:0,at:I.stockAt,by:""}; }
+function chipList(after){ const L=[]; I.sets.forEach(s=>{ if(s.chip&&s.at>after) L.push({at:s.at,date:s.burns[0]?s.burns[0].date:dayOf(s.at),qty:s.chip,by:s.by,where:`Set ${setNo(s)} change`}); });
+  I.stockLog.forEach(e=>{ if(e.kind==="chip"&&e.at>after) L.push({at:e.at,date:dayOf(e.at),qty:e.qty,by:e.by,where:e.note||"Found"}); }); return L.sort((x,y)=>x.at<y.at?-1:1); }
+function eHand(){ const b=eBase(), day=dayOf(b.at); let recv=0, scrap=0, used=0, sets=0, chip=0, found=0, sent=0;
+  I.stockLog.forEach(e=>{ if(e.at<=b.at) return; if(e.kind==="recv") recv+=e.qty; if(e.kind==="scrap") scrap+=e.qty; if(e.kind==="chip") found+=e.qty; if(e.kind==="vendor") sent+=e.qty; });
   I.sets.forEach(s=>{ const first=s.burns[0]; if(s.at>b.at&&(!first||first.date>=day)){ sets++; used+=s.per||s.spec.per; chip+=s.chip||0; } });
-  return {qty:b.qty+recv-used-chip-scrap,base:b,recv,scrap,sets,used,chip}; }
+  return {qty:b.qty+recv-used-chip-found-scrap, pile:b.chipped+chip+found-sent, base:b,recv,scrap,sets,used,chip,found,sent}; }
+const lastVendor=()=>I.stockLog.filter(e=>e.kind==="vendor").sort((x,y)=>x.at<y.at?-1:1).pop()||null;
 // filters: burns on the ICC machine since its last F-031 filter change
 function lastFilter(){ if(!F||!I.mach) return null; const others=F.others||[];
   return (F.entries||[]).filter(e=>e.mach===I.mach&&(e.filters||[]).some(n=>!others.includes(n))).sort((a,b)=>a.at<b.at?-1:1).pop()||null; }
@@ -148,7 +153,7 @@ function renderEntry(){
   if(!$("bDiff").checked) fillVals(expect(nb.spec,nb.k));
   if(!$("bDate").value) $("bDate").value=today();
   if(!$("bSign").value) $("bSign").value=mySign();
-  $("bStock").innerHTML=nb.newSet?`Starting this set takes ${I.spec.per} electrodes, plus any chipped ones swapped.`:"";
+  $("bStock").innerHTML=nb.newSet?`Starting this set takes ${I.spec.per} electrodes, plus any chipped ones swapped. Keep the chipped ones aside for the maker.`:"";
 }
 $("bDiff").addEventListener("change",()=>{ setDiff($("bDiff").checked); if(!$("bDiff").checked&&!editId){ const nb=nextBurn(); fillVals(expect(nb.spec,nb.k)); } });
 function findBurn(id){ for(const s of I.sets){ const b=s.burns.find(x=>x.id===id); if(b) return {s,b}; } return null; }
@@ -182,7 +187,7 @@ $("bSave").addEventListener("click",async()=>{
     if(v==="f031"){ location.href=f031Link(); return; } if(v!=="go") return; }
   const nb=nextBurn(), chip=nb.newSet?Math.max(0,Math.round(+$("bChip").value||0)):0, ex=expect(nb.spec,nb.k);
   if(nb.newSet){ const h=eHand().qty, take=I.spec.per+chip;
-    const go=await dialog("Start a new electrode set?",`<p>Set ${I.sets.length+1}, burn 1. Load a fresh set of ${I.spec.per} electrodes and run the start values:</p><p class="big"><b>Orbit ${f4(ex.orbit)} &middot; Y+ ${f4(ex.yp)} &middot; Y- ${f4(ex.ym)}</b></p><p>This takes ${take} electrode${take===1?"":"s"} from stock${chip?` (${chip} chipped swapped)`:""}: ${h} on hand, ${h-take} after.</p>`,[{t:"Start the new set",v:true},{t:"Cancel",v:false,alt:true}]);
+    const go=await dialog("Start a new electrode set?",`<p>Set ${I.sets.length+1}, burn 1. Load a fresh set of ${I.spec.per} electrodes and run the start values:</p><p class="big"><b>Orbit ${f4(ex.orbit)} &middot; Y+ ${f4(ex.yp)} &middot; Y- ${f4(ex.ym)}</b></p><p>This takes ${take} good electrode${take===1?"":"s"} from stock${chip?` (${chip} chipped go on the chipped pile for the maker)`:""}: ${h} on hand, ${h-take} after.</p>`,[{t:"Start the new set",v:true},{t:"Cancel",v:false,alt:true}]);
     if(!go) return; }
   const burn={id:uid(),sn,orbit,yp,ym,diff:diff||undefined,rt,sign,date,note,at:now};
   const ok=await commit(d=>{ const s=d.sets[d.sets.length-1];
@@ -226,25 +231,55 @@ function renderSetup(){ adminView(); $("sSign").value=mySign(); if(!adminOK) ret
   $("sOrb").value=f4(I.spec.orbit); $("sYp").value=f4(I.spec.yp); $("sYm").value=f4(I.spec.ym); $("sStep").value=f4(I.spec.step);
   $("sBurns").value=I.spec.burns; $("sPer").value=I.spec.per; $("sFilt").value=I.spec.filt;
   const ms=(F&&F.machines)||[]; $("sMachF").innerHTML=`<option value="">Pick the ICC machine</option>`+ms.map(m=>`<option value="${esc(m.id)}"${m.id===I.mach?" selected":""}>${esc(m.name)}</option>`).join("");
-  const h=eHand(), fmt=iso=>{ const d=new Date(iso); return `${d.getMonth()+1}/${d.getDate()}/${d.getFullYear()}`; };
-  const log=I.stockLog.slice().sort((x,y)=>x.at<y.at?1:-1).slice(0,6);
-  const since=[h.recv?`+${h.recv} received`:"",h.sets?`-${h.used} in ${h.sets} new set${h.sets===1?"":"s"}`:"",h.chip?`-${h.chip} chipped swaps`:"",h.scrap?`-${h.scrap} scrapped`:""].filter(Boolean).join(", ");
-  $("sStock").innerHTML=`<div class="stockcard"><div class="onhand${h.qty<I.spec.per||(lowAt()&&h.qty<=lowAt())?" low":""}"><b>${h.qty}</b> electrodes on hand <span class="hint">(${Math.floor(Math.max(0,h.qty)/I.spec.per)} full set${Math.floor(Math.max(0,h.qty)/I.spec.per)===1?"":"s"} worth)</span></div>
-    <div class="hint">${h.base.by?`Counted ${h.base.qty} on ${fmt(h.base.at)} by ${esc(h.base.by)}`:`Starting from 0, ${fmt(h.base.at)}`}${since?`. Since then: ${since}`:""}.</div>
-    <div class="row3"><label class="f">Received (electrodes, not boxes)<input type="number" min="1" step="1" id="sRq" placeholder="a box of ${I.spec.per} = ${I.spec.per}"></label><button type="button" class="btn alt small" id="sRb">Add received</button></div>
-    <div class="row3"><label class="f">Scrapped (chipped on the shelf, broken)<input type="number" min="1" step="1" id="sXq" placeholder="how many"></label><button type="button" class="btn alt small" id="sXb">Take off</button></div>
-    <div class="row3"><label class="f">Physical count<input type="number" min="0" step="1" id="sCq" placeholder="every electrode on the shelf"></label><button type="button" class="btn alt small" id="sCb">Set count</button></div>
-    <div class="row3"><label class="f">Order more when down to (sets)<input type="number" min="0" step="1" id="sLow" value="${I.lowSets??""}"></label></div>
-    <div class="hint">${I.lowSets?`Warns at ${lowAt()} electrodes or fewer (${I.lowSets} sets of ${I.spec.per}), so there is time to make and ship more.`:"0 turns the reorder warning off."}</div>
-    ${log.length?`<details><summary>Counts, deliveries and scrap</summary>${log.map(e=>`<div class="hint">${fmt(e.at)} &middot; ${e.kind==="count"?`counted ${e.qty}`:e.kind==="recv"?`received ${e.qty}`:`scrapped ${e.qty}`} &middot; ${esc(e.by)}</div>`).join("")}</details>`:""}</div>`;
-  const who=()=>mySign()||"ADMIN", S=(op,msg)=>adminOK?commit(op,msg):(adminView(),false);
-  $("sRb").onclick=()=>{ const q=Math.round(+$("sRq").value); if(!(q>0)) return say($("sMsg"),"bad","Enter how many electrodes came in.");
-    S(d=>{ d.stockLog.push({id:uid(),kind:"recv",qty:q,at:new Date().toISOString(),by:who()}); },`ICC stock: received ${q}`); };
-  $("sXb").onclick=()=>{ const q=Math.round(+$("sXq").value); if(!(q>0)) return say($("sMsg"),"bad","Enter how many to take off.");
-    S(d=>{ d.stockLog.push({id:uid(),kind:"scrap",qty:q,at:new Date().toISOString(),by:who()}); },`ICC stock: scrapped ${q}`); };
-  $("sCb").onclick=()=>{ const el=$("sCq"), q=Math.round(+el.value); if(el.value===""||!(q>=0)) return say($("sMsg"),"bad","Enter the number counted on the shelf.");
-    if(q!==h.qty&&!confirm(`The log shows ${h.qty} on hand. Set it to ${q}, as counted? Everything from now on counts down from ${q}.`)) return;
-    S(d=>{ d.stockLog.push({id:uid(),kind:"count",qty:q,at:new Date().toISOString(),by:who()}); },`ICC stock: counted ${q}`); };
+  const h=eHand(), fmt=iso=>{ const d=new Date(iso); return `${d.getMonth()+1}/${d.getDate()}/${d.getFullYear()}`; }, per=I.spec.per, box=I.boxSets||12;
+  const log=I.stockLog.slice().sort((x,y)=>x.at<y.at?1:-1).slice(0,8), lv=lastVendor(), CL=chipList(lv&&lv.at>h.base.at?lv.at:h.base.at);
+  if(h.base.chipped&&!(lv&&lv.at>h.base.at)) CL.unshift({at:h.base.at,date:dayOf(h.base.at),qty:h.base.chipped,by:h.base.by,where:"Already held at the physical count"});
+  const since=[h.recv?`+${h.recv} received`:"",h.sets?`-${h.used} in ${h.sets} new set${h.sets===1?"":"s"}`:"",h.chip+h.found?`-${h.chip+h.found} chipped`:"",h.scrap?`-${h.scrap} other scrap`:""].filter(Boolean).join(", ");
+  const calc=(p)=>`<span class="hint" id="${p}Tot"></span>`;
+  $("sStock").innerHTML=`<div class="stockcard"><div class="onhand${h.qty<per||(lowAt()&&h.qty<=lowAt())?" low":""}"><b>${h.qty}</b> good electrodes on hand <span class="hint">(${Math.floor(Math.max(0,h.qty)/per)} full set${Math.floor(Math.max(0,h.qty)/per)===1?"":"s"} worth)</span></div>
+    <div class="hint">${h.base.by?`Counted ${h.base.qty} good on ${fmt(h.base.at)} by ${esc(h.base.by)}`:`Starting from 0, ${fmt(h.base.at)}`}${since?`. Since then: ${since}`:""}.</div>
+    <div class="onhand" style="margin-top:12px"><b>${h.pile}</b> chipped held for the maker</div>
+    <div class="hint">${lv?`Last reported ${lv.qty} on ${fmt(lv.at)} by ${esc(lv.by)}. `:""}${CL.length?`On the list: ${CL.reduce((t,x)=>t+x.qty,0)} chipped.`:""}</div>
+    ${CL.length?`<details><summary>Chipped list for the maker</summary>${CL.map(x=>`<div class="hint">${fmtDate(x.date)} &middot; ${x.qty} &middot; ${esc(x.where)} &middot; ${esc(x.by)}</div>`).join("")}<div class="btns"><button type="button" class="btn alt small" id="sChipPrint">Print the chipped list</button></div></details>`:""}
+
+    <h3 style="margin:16px 0 4px">Received</h3>
+    <div class="cnt3"><label class="f">Boxes<input type="number" min="0" step="1" id="sRbx" inputmode="numeric"></label><label class="f">Sets<input type="number" min="0" step="1" id="sRst" inputmode="numeric"></label><label class="f">Loose<input type="number" min="0" step="1" id="sRls" inputmode="numeric"></label></div>
+    <div class="row3">${calc("sR")}<button type="button" class="btn alt small" id="sRb">Add received</button></div>
+
+    <h3 style="margin:16px 0 4px">Physical count</h3>
+    <div class="cnt3"><label class="f">Full sets<input type="number" min="0" step="1" id="sCst" inputmode="numeric"></label><label class="f">Loose good<input type="number" min="0" step="1" id="sCls" inputmode="numeric"></label><label class="f">Chipped held<input type="number" min="0" step="1" id="sCch" inputmode="numeric"></label></div>
+    <div class="row3">${calc("sC")}<button type="button" class="btn alt small" id="sCb">Set count</button></div>
+    <div class="hint">Count wrapped sets, loose good ones (spares left from covering chipped ones) and the chipped ones kept aside. Chipped are never counted as good.</div>
+
+    <h3 style="margin:16px 0 4px">Take off</h3>
+    <div class="row3"><label class="f">Chipped found<input type="number" min="1" step="1" id="sKq" inputmode="numeric" placeholder="how many"></label><button type="button" class="btn alt small" id="sKb">Move to chipped</button></div>
+    <div class="row3"><label class="f">Other scrap (broken, lost)<input type="number" min="1" step="1" id="sXq" inputmode="numeric" placeholder="how many"></label><button type="button" class="btn alt small" id="sXb">Take off</button></div>
+    <div class="row3"><label class="f">Chipped reported or sent to the maker<input type="number" min="1" step="1" id="sVq" inputmode="numeric" value="${h.pile>0?h.pile:""}"></label><button type="button" class="btn alt small" id="sVb">Mark reported</button></div>
+
+    <h3 style="margin:16px 0 4px">Settings</h3>
+    <div class="cnt3"><label class="f">Sets per box<input type="number" min="1" step="1" id="sBox" value="${box}"></label><label class="f">Order more at (sets)<input type="number" min="0" step="1" id="sLow" value="${I.lowSets??""}"></label><span></span></div>
+    <div class="hint">${I.lowSets?`Warns at ${lowAt()} good electrodes or fewer (${I.lowSets} sets of ${per}), so there is time to make and ship more.`:"Order more at 0 turns the reorder warning off."} Electrodes per set is under Start values.</div>
+    ${log.length?`<details><summary>Counts, deliveries and take-offs</summary>${log.map(e=>`<div class="hint">${fmt(e.at)} &middot; ${e.kind==="count"?`counted ${e.qty} good, ${e.chipped||0} chipped`:e.kind==="recv"?`received ${e.qty}`:e.kind==="chip"?`${e.qty} chipped found`:e.kind==="vendor"?`${e.qty} chipped reported to the maker`:`${e.qty} other scrap`} &middot; ${esc(e.by)}</div>`).join("")}</details>`:""}</div>`;
+  const who=()=>mySign()||"ADMIN", S=(op,msg)=>adminOK?commit(op,msg):(adminView(),false), n=id=>Math.max(0,Math.round(+$(id).value||0)), now=()=>new Date().toISOString();
+  const rTot=()=>n("sRbx")*box*per+n("sRst")*per+n("sRls"), cTot=()=>n("sCst")*per+n("sCls");
+  const showTot=()=>{ $("sRTot").textContent=rTot()?`= ${rTot()} electrodes (${n("sRbx")} x ${box} x ${per} + ${n("sRst")} x ${per} + ${n("sRls")})`:""; $("sCTot").textContent=(cTot()||n("sCch"))?`= ${cTot()} good (${n("sCst")} x ${per} + ${n("sCls")}), ${n("sCch")} chipped`:""; };
+  ["sRbx","sRst","sRls","sCst","sCls","sCch"].forEach(id=>$(id).addEventListener("input",showTot));
+  $("sRb").onclick=()=>{ const q=rTot(); if(!(q>0)) return say($("sMsg"),"bad","Enter the boxes, sets or loose electrodes that came in.");
+    S(d=>{ d.stockLog.push({id:uid(),kind:"recv",qty:q,at:now(),by:who()}); },`ICC stock: received ${q}`); };
+  $("sCb").onclick=()=>{ const q=cTot(), c=n("sCch"); if(["sCst","sCls","sCch"].every(id=>$(id).value==="")) return say($("sMsg"),"bad","Enter the full sets, loose good ones and chipped ones counted.");
+    if((q!==h.qty||c!==h.pile)&&!confirm(`The log shows ${h.qty} good and ${h.pile} chipped. Set it to ${q} good and ${c} chipped, as counted? Everything from now on counts from here.`)) return;
+    S(d=>{ d.stockLog.push({id:uid(),kind:"count",qty:q,chipped:c,at:now(),by:who()}); },`ICC stock: counted ${q} good, ${c} chipped`); };
+  $("sKb").onclick=()=>{ const q=n("sKq"); if(!(q>0)) return say($("sMsg"),"bad","Enter how many chipped ones were found.");
+    S(d=>{ d.stockLog.push({id:uid(),kind:"chip",qty:q,at:now(),by:who(),note:"Found in stock"}); },`ICC stock: ${q} chipped found`); };
+  $("sXb").onclick=()=>{ const q=n("sXq"); if(!(q>0)) return say($("sMsg"),"bad","Enter how many to take off.");
+    S(d=>{ d.stockLog.push({id:uid(),kind:"scrap",qty:q,at:now(),by:who()}); },`ICC stock: ${q} other scrap`); };
+  $("sVb").onclick=()=>{ const q=n("sVq"); if(!(q>0)) return say($("sMsg"),"bad","Enter how many chipped ones were reported or sent back.");
+    if(q>h.pile&&!confirm(`Only ${h.pile} chipped are held. Mark ${q} reported anyway?`)) return;
+    S(d=>{ d.stockLog.push({id:uid(),kind:"vendor",qty:q,at:now(),by:who()}); },`ICC stock: ${q} chipped reported to the maker`); };
+  $("sBox").onchange=()=>{ const q=n("sBox"); if(!(q>0)) return renderSetup(); S(d=>{ d.boxSets=q; },`ICC stock: ${q} sets per box`); };
+  if($("sChipPrint")) $("sChipPrint").onclick=()=>{ const tot=CL.reduce((t,x)=>t+x.qty,0);
+    $("printArea").innerHTML=`<div style="font-family:Arial,sans-serif;color:#000;width:7.5in"><h2 style="margin:0 0 4pt">Chipped electrodes, P/N ${esc(I.pn)}</h2><div style="margin:0 0 10pt">${lv?`Since the last report on ${fmt(lv.at)}`:"All recorded"} &middot; ${tot} chipped</div>
+      <table style="width:100%;border-collapse:collapse">${["<tr><th>Date</th><th>Qty</th><th>Where found</th><th>By</th></tr>",...CL.map(x=>`<tr><td>${fmtDate(x.date)}</td><td>${x.qty}</td><td>${esc(x.where)}</td><td>${esc(x.by)}</td></tr>`)].join("").replace(/<t([hd])>/g,'<t$1 style="border:1px solid #000;padding:4pt 6pt;text-align:left">')}</table></div>`; window.print(); };
   $("sLow").onchange=()=>{ const q=Math.max(0,Math.round(+$("sLow").value||0)); S(d=>{ d.lowSets=q; delete d.low; },`ICC stock: reorder at ${q} sets`); };
 }
 const setSpec=(key,id,isInt)=>$(id).addEventListener("change",()=>{ if(!adminOK) return; const v=isInt?Math.round(+$(id).value):num($(id).value);
