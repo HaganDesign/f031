@@ -128,7 +128,9 @@ const lastVendor=()=>I.stockLog.filter(e=>e.kind==="vendor").sort((x,y)=>x.at<y.
 function lastFilter(){ if(!F||!I.mach) return null; const others=F.others||[];
   return (F.entries||[]).filter(e=>e.mach===I.mach&&(e.filters||[]).some(n=>!others.includes(n))).sort((a,b)=>a.at<b.at?-1:1).pop()||null; }
 function burnsSinceFilter(){ const lf=lastFilter(); if(!lf) return null; let n=0;
-  I.sets.forEach(s=>s.burns.forEach(b=>{ if(b.at>lf.at&&b.date>=lf.date) n++; })); return {n,lf}; }
+  // a cut runs on whatever filters are in when it finishes: go by when the run time went in (still cutting = now)
+  const now=new Date().toISOString();
+  I.sets.forEach(s=>s.burns.forEach(b=>{ const t=b.rtAt||(!b.rt&&!b.noTime?now:b.at); if(t>lf.at&&(b.date>=lf.date||t.slice(0,10)>=lf.date)) n++; })); return {n,lf}; }
 const lowAt=()=>(I.lowSets||0)*(I.spec.per||8);   // reorder point, in electrodes
 const machName=()=>{ const m=F&&(F.machines||[]).find(x=>x.id===I.mach); return m?m.name:""; };
 const f031Link=()=>`index.html${I.mach?`?m=${encodeURIComponent(I.mach)}`:""}`;
