@@ -150,6 +150,10 @@ function tallyHtml(){ const fs=burnsSinceFilter(), s=curSet(), per=I.spec.burns|
   const msg=n>=filt?(cut&&n===filt?"Last burn before filters and electrodes":"Filters and electrodes due"):n>=per&&n%per===0?(cut?"Last burn on this set":"Electrodes due"):`${n} of ${filt} on these filters`;
   return `<div class="tally${n>=filt?" due":""}"><div class="trow">${tallyRow(r1)}${n>=per||r2?tallyRow(r2):""}</div><div class="tmsg">${msg}</div></div>`; }
 
+// run time: two boxes (phone number pads have no colon), stored as h:mm
+const rtGet=p=>{ const h=$(p+"h").value.trim(), m=$(p+"m").value.trim(); if(!h&&!m) return ""; if(!/^\d{0,3}$/.test(h)||!/^\d{0,2}$/.test(m)) return "x"; return `${+h||0}:${String(+m||0).padStart(2,"0")}`; };
+const rtOk=s=>!s||(/^\d{1,3}:\d{2}$/.test(s)&&+s.split(":")[1]<60&&/^\d*$/.test(s.replace(":","")));
+const rtSet=(p,s)=>{ const [h,m]=String(s||"").split(":"); $(p+"h").value=h||""; $(p+"m").value=m||""; };
 // ---------- new burn ----------
 let editId=null;
 function fillVals(v){ $("bOrb").value=f4(v.orbit); $("bYp").value=f4(v.yp); $("bYm").value=f4(v.ym); }
@@ -184,18 +188,18 @@ async function finishBurn(rt,note){ const ob=openBurn(); if(!ob) return; const i
   const ok=await commit(d=>{ for(const s of d.sets){ const b=s.burns.find(x=>x.id===id); if(b){ if(b.rt||b.noTime) return false; if(rt) b.rt=rt; else { b.noTime=true; b.note=[b.note,note].filter(Boolean).join(" / "); } b.rtBy=by; b.rtAt=now; return; } } return false; },
     rt?`ICC run time: ${ob.b.sn} ${rt} ${by}`:`ICC no time: ${ob.b.sn} ${by}`);
   if(ok==="skip"){ say($("bMsg"),"warn","Someone already closed that burn. Here's the latest."); renderEntry(); return; }
-  if(!ok) return; $("bFinRT").value=""; $("bFinNote").value=""; document.querySelector("#bFinish details").open=false; window.scrollTo(0,0);
+  if(!ok) return; rtSet("bFinRT",""); $("bFinNote").value=""; document.querySelector("#bFinish details").open=false; window.scrollTo(0,0);
   say($("bMsg"),"good",rt?`Run time ${esc(rt)} saved for S/N ${esc(ob.b.sn)}.`:`S/N ${esc(ob.b.sn)} closed without a time.`); renderEntry();
   const s=curSet(); if(setFull(s)){ const fs=burnsSinceFilter(); await dialog("Set finished",`<p>That was burn ${s.spec.burns}. The next part starts a new set of ${I.spec.per} electrodes, back at orbit ${f4(I.spec.orbit)}.</p>${fs&&I.spec.filt&&fs.n>=I.spec.filt?`<p><b>Filters are due now.</b> Change them and log it on F-031 before the next burn.</p>`:fs&&I.spec.filt&&fs.n+I.spec.burns>=I.spec.filt?`<p><b>Filters are due after the next set.</b></p>`:""}`,[{t:"OK",v:0}]); } }
-$("bFinGo").addEventListener("click",()=>{ const rt=$("bFinRT").value.trim(); if(!/^\d{1,3}(:[0-5]\d)?$/.test(rt)) return say($("bMsg"),"bad","Run time as hours:minutes, like 3:25."); finishBurn(rt); });
-$("bFinRT").addEventListener("keydown",e=>{ if(e.key==="Enter") $("bFinGo").click(); });
+$("bFinGo").addEventListener("click",()=>{ const rt=rtGet("bFinRT"); if(!rt||!rtOk(rt)) return say($("bMsg"),"bad","Enter the hours and minutes it ran (minutes 0 to 59)."); finishBurn(rt); });
+["bFinRTh","bFinRTm"].forEach(id=>$(id).addEventListener("keydown",e=>{ if(e.key==="Enter") $("bFinGo").click(); }));
 $("bFinNo").addEventListener("click",()=>{ const n=$("bFinNote").value.trim(); if(!n) return say($("bMsg"),"bad","Write what happened before closing it without a time."); finishBurn("",n); });
 function findBurn(id){ for(const s of I.sets){ const b=s.burns.find(x=>x.id===id); if(b) return {s,b}; } return null; }
 function startEdit(id){ const f=findBurn(id); if(!f) return; editId=id; document.querySelector('nav button[data-tab="entry"]').click();
-  const b=f.b; $("bSN").value=b.sn; fillVals(b); setDiff(!!b.diff); $("bRT").value=b.rt||""; $("bSign").value=b.sign; $("bDate").value=b.date; $("bNote").value=b.note||"";
+  const b=f.b; $("bSN").value=b.sn; fillVals(b); setDiff(!!b.diff); rtSet("bRT",b.rt); $("bSign").value=b.sign; $("bDate").value=b.date; $("bNote").value=b.note||"";
   $("bSave").textContent="Save changes"; $("bCancel").hidden=false; document.querySelector('nav button[data-tab="entry"]').textContent="Edit burn"; say($("bMsg")); renderEntry(); window.scrollTo(0,0); }
 function stopEdit(){ editId=null; $("bSave").textContent="Save burn"; $("bCancel").hidden=true; document.querySelector('nav button[data-tab="entry"]').textContent="New burn";
-  ["bSN","bRT","bNote"].forEach(id=>$(id).value=""); $("bChip").value="0"; setDiff(false); $("bDate").value=today(); $("bSign").value=mySign(); }
+  ["bSN","bRTh","bRTm","bNote"].forEach(id=>$(id).value=""); $("bChip").value="0"; setDiff(false); $("bDate").value=today(); $("bSign").value=mySign(); }
 $("bCancel").addEventListener("click",()=>{ stopEdit(); say($("bMsg")); renderEntry(); });
 
 function dialog(title,html,buttons){ return new Promise(res=>{ $("dlgT").textContent=title; $("dlgB").innerHTML=html;
@@ -203,11 +207,11 @@ function dialog(title,html,buttons){ return new Promise(res=>{ $("dlgT").textCon
   $("dlg").hidden=false; $("dlgBtns").querySelectorAll("button").forEach(x=>x.onclick=()=>{ $("dlg").hidden=true; res(buttons[+x.dataset.i].v); }); }); }
 
 $("bSave").addEventListener("click",async()=>{
-  const sn=$("bSN").value.trim().toUpperCase(), rt=$("bRT").value.trim(), sign=$("bSign").value.trim().toUpperCase(), date=$("bDate").value, note=$("bNote").value.trim(), diff=$("bDiff").checked;
+  const sn=$("bSN").value.trim().toUpperCase(), rt=rtGet("bRT"), sign=$("bSign").value.trim().toUpperCase(), date=$("bDate").value, note=$("bNote").value.trim(), diff=$("bDiff").checked;
   const orbit=num($("bOrb").value), yp=num($("bYp").value), ym=num($("bYm").value);
   if(!sn) return say($("bMsg"),"bad","Enter the part serial number.");
   if(![orbit,yp,ym].every(isFinite)) return say($("bMsg"),"bad","The orbit and both depths have to be numbers.");
-  if(rt&&!/^\d{1,3}(:[0-5]\d)?$/.test(rt)) return say($("bMsg"),"bad","Run time as hours:minutes, like 3:25.");
+  if(!rtOk(rt)) return say($("bMsg"),"bad","Run time: hours in the first box, minutes (0 to 59) in the second.");
   if(!sign) return say($("bMsg"),"bad","Enter your initials.");
   if(!date) return say($("bMsg"),"bad","Enter the date.");
   if(diff&&!note) return say($("bMsg"),"bad","Different values were used, so write why in the note.");
@@ -230,7 +234,7 @@ $("bSave").addEventListener("click",async()=>{
     else { if(!s||s.id!==nb.set.id||s.burns.length!==nb.k-1) return false; s.burns.push(burn); } },`ICC burn ${nb.k}: ${sn} ${sign}`);
   if(ok==="skip"){ say($("bMsg"),"warn","Someone else saved a burn at the same moment. Check the set and burn number above, then save again."); renderEntry(); return; }
   if(!ok) return;
-  ["bSN","bRT","bNote"].forEach(id=>$(id).value=""); $("bChip").value="0"; $("bChipBox").open=false; setDiff(false);
+  ["bSN","bRTh","bRTm","bNote"].forEach(id=>$(id).value=""); $("bChip").value="0"; $("bChipBox").open=false; setDiff(false);
   say($("bMsg"),"good",`Saved: burn ${nb.k} of set ${I.sets.length}, S/N ${esc(sn)}.${rt?"":" Enter the run time here when it's done cutting."}`); renderEntry();
   if(!rt) return;   // still cutting: the set-finished and filter messages come when the run time goes in
   const fs=burnsSinceFilter(), s=curSet();
