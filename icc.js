@@ -334,8 +334,9 @@ function qrSvg(text){ const q=new QRCode(-1,0); q.addData(text); q.make(); const
 $("sQr").addEventListener("click",()=>{ if(!adminOK) return; if(location.protocol==="file:") return say($("sMsg"),"bad","Open the log from its web address first; the code points at whatever address this page has.");
   $("printArea").innerHTML=`<div style="text-align:center;font-family:Arial,sans-serif;padding-top:.5in">${qrSvg(location.href.split(/[?#]/)[0])}<div style="font-size:20pt;font-weight:bold;margin-top:.15in">ICC Orbit Sheet</div><div style="font-size:12pt">P/N ${esc(I.pn)} &middot; scan to log a burn (${esc(I.form)})</div></div>`; window.print(); });
 
+window.formDirty=()=>!!($("bSN").value.trim()||$("bFinRTh").value.trim()||$("bFinRTm").value.trim()||$("bNote").value.trim()||editId);
 function renderAll(){ showBrand(F); if(F) LS.set("f031brand",JSON.stringify({company:F.company||"",logo:F.logo||""}));
-  $("ttl").textContent=`ICC Orbit Sheet P/N ${I.pn}`; $("formLine").textContent=`${I.form} Rev ${I.rev}`;
+  $("ttl").textContent=`ICC Orbit Sheet P/N ${I.pn}`; formNav($("formLine"),I.rev,I.mach?{"index.html":"?m="+encodeURIComponent(I.mach)}:null);
   renderEntry(); renderRecords(); renderSetup(); }
 
 // ---------- start ----------

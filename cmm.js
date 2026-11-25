@@ -224,8 +224,9 @@ $("sQr").addEventListener("click",()=>{ if(!adminOK) return; if(location.protoco
   $("printArea").innerHTML=`<div class="qrs">${I.machines.map(m=>`<div class="qc">${qrSvg(base+"?m="+encodeURIComponent(m.id))}<div class="qn">${esc(m.name)}</div><div class="qt">Scan for the daily CMM maintenance (${esc(I.form)})</div></div>`).join("")}</div>`; window.print(); });
 
 function pickFromLink(){ const m=new URLSearchParams(location.search).get("m"); if(m&&I.machines.some(x=>x.id===m)){ LS.set("f037mach",m); $("eMach").value=m; $("rMach").value=m; } }
+window.formDirty=()=>!!(picked.size||editId);
 function renderAll(){ showBrand(F); if(F) LS.set("f031brand",JSON.stringify({company:F.company||"",logo:F.logo||""}));
-  $("ttl").textContent="CMM Daily Maintenance"; $("formLine").textContent=`${I.form} Rev ${I.rev}`;
+  $("ttl").textContent="CMM Daily Maintenance"; formNav($("formLine"),I.rev);
   renderEntry(); renderRecords(); renderSetup(); }
 // ---------- start ----------
 const hidePw=()=>document.querySelectorAll(".pwwrap").forEach(w=>{ const i=w.querySelector("input"), b=w.querySelector("button"); i.type="password"; b.textContent="Show"; b.setAttribute("aria-label","Show password"); });

@@ -241,7 +241,7 @@ $("xLoad").addEventListener("change",async ev=>{ const files=[...ev.target.files
 
 // ---------- setup (shared: machines, buttons, form) ----------
 function renderSetup(){
-  adminView(); $("sSign").value=mySign(); $("formLine").textContent=`${D.form||"F-031"} Rev ${D.rev||"-"}`; if(!adminOK) return;
+  adminView(); $("sSign").value=mySign(); formNav($("formLine"),D.rev); if(!adminOK) return;
   const ud=(k,i,n)=>`<button type="button" class="btn alt small" data-up="${k},${i}" aria-label="Move up"${i?"":" disabled"}>&#9650;</button><button type="button" class="btn alt small" data-dn="${k},${i}" aria-label="Move down"${i<n-1?"":" disabled"}>&#9660;</button>`;
   $("sMach").innerHTML=D.machines.map((m,i)=>`<div class="item">${ud("m",i,D.machines.length)}<input data-mi="${i}" value="${esc(m.name)}" aria-label="Machine name"><button type="button" class="btn danger small" data-mdel="${i}">Remove</button></div><div class="shows">Type: <input data-mt="${i}" list="typeList" value="${esc(typeOf(m))}" aria-label="Machine type for ${esc(m.name)}" class="tybox"></div>`).join("")||`<p class="hint">No machines yet.</p>`;
   const TY=allTypes(); $("typeList").innerHTML=TY.map(t=>`<option value="${esc(t)}">`).join("");
@@ -249,7 +249,6 @@ function renderSetup(){
   $("sOpt").innerHTML=blist("o",D.options,false); $("sOth").innerHTML=blist("t",D.others||[],true);
   $("sSign").value=mySign(); $("sForm").value=D.form; $("sRev").value=D.rev; $("sCo").value=D.company||"";
   $("sLogoClear").hidden=!D.logo; $("sLogoPrev").innerHTML=D.logo?`<img src="${D.logo}" alt="Current logo"><span class="hint">Current logo</span>`:`<span class="hint">No logo yet. PNG with a transparent background looks best.</span>`;
-  $("formLine").textContent=`${D.form||"F-031"} Rev ${D.rev||"-"}`;
   const arr=(d,k)=>k==="m"?d.machines:k==="o"?d.options:(d.others=d.others||[]);
   // changes go by name or id, not position, so they still land right if another device changed the lists meanwhile
   const keyOf=(k,i)=>k==="m"?D.machines[i].id:arr(D,k)[i];
@@ -363,6 +362,7 @@ $("sCalcSet").addEventListener("change",async e=>{ const f=e.target.files&&e.tar
   if(!Object.keys(p).length) return say($("sMsg"),"bad","That settings file has no company name or logo filled in.");
   setBrand(p,"Setup: company from settings file"); say($("sMsg"),"good",`Copied the ${[p.company&&"company name",p.logo&&"logo"].filter(Boolean).join(" and ")}.`); });
 
+window.formDirty=()=>!!($("eHours").value.trim()||$("eMins").value.trim()||$("eOther").value.trim()||picked.size||editId);
 function renderAll(){ showBrand(); renderEntry(); renderRecords(); renderSetup(); }
 
 const hidePw=()=>document.querySelectorAll(".pwwrap").forEach(w=>{ const i=w.querySelector("input"), b=w.querySelector("button"); i.type="password"; b.textContent="Show"; b.setAttribute("aria-label","Show password"); });
