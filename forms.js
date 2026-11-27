@@ -4,6 +4,7 @@
 window.SHOP_FORMS=[
   {id:"F-030", name:"ICC Orbit Sheet",      page:"icc.html"},
   {id:"F-031", name:"EDM Filter / Maint.",  page:"index.html"},
+  {id:"F-036", name:"CNC Mills Daily",      page:"mills.html"},
   {id:"F-037", name:"CMM Daily Maint.",     page:"cmm.html"}
 ];
 
