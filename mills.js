@@ -111,7 +111,8 @@ const DAYN=["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturda
 const pd=s=>{ const [y,m,d]=s.split("-").map(Number); return new Date(y,m-1,d); };
 const ymd=d=>d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
 const dow=s=>pd(s).getDay();
-const isOff=s=>(I.off||[]).includes(dow(s));
+const hol=s=>(window.shopHoliday?window.shopHoliday(s):"");
+const isOff=s=>(I.off||[]).includes(dow(s))||!!hol(s);
 const entryFor=(mid,date)=>I.entries.find(e=>e.mach===mid&&e.date===date)||null;
 const num=v=>{ const t=String(v??"").trim(); if(t==="") return null; const x=parseFloat(t); return isFinite(x)&&/^-?\d*\.?\d+$/.test(t)?x:NaN; };
 const nf=x=>x==null?"":String(x);
@@ -124,7 +125,7 @@ const COLS=["Waylube","Coolant lvl","Conc.","Coolant add","Water add","Other"];
 const added=(x,u)=>x==null?"&mdash;":`${esc(nf(x))}${u?" "+esc(u):""}`;
 function cells(e,date,screen,mid){ const N=6;
   if(e) return `<td class="ck">${e.way?"&#10003;":"&mdash;"}</td><td class="ck">${e.cool?"&#10003;":"&mdash;"}</td><td${screen&&e.conc!=null&&!inR(e.conc,rangeOf(e.mach))?' class="miss"':''}>${e.conc==null?"":esc(nf(e.conc))}</td><td>${added(e.cAdd,I.uC)}</td><td>${added(e.wAdd,I.uW)}</td><td class="l">${esc(e.other||"")}</td>`;
-  if(isOff(date)) return `<td colspan="${N}">N/A</td>`;
+  if(isOff(date)) return `<td colspan="${N}">${hol(date)?esc(hol(date))+" - ":""}N/A</td>`;
   if(screen&&date<today()&&firstDay(mid)&&date>firstDay(mid)) return `<td colspan="${N}"><span class="miss">missed</span></td>`;
   return Array(N).fill("<td></td>").join(""); }
 const firstDay=mid=>I.entries.filter(e=>e.mach===mid).reduce((m,e)=>!m||e.date<m?e.date:m,"");
@@ -150,7 +151,7 @@ function renderEntry(){ fillMach($("eMach")); const mid=$("eMach").value;
   else if(e){ const r=rangeOf(e.mach);
     $("eDay").innerHTML=`<div class="daycard ${e.conc!=null&&!inR(e.conc,r)?"part":"done"}"><b>${DAYN[dow(date)]} ${fmtDate(date)} is logged</b> by ${esc(e.sign)}: waylube ${e.way?"&#10003;":"&mdash;"} &middot; coolant level ${e.cool?"&#10003;":"&mdash;"} &middot; concentration ${e.conc==null?"none":esc(nf(e.conc))}${e.cAdd!=null?` &middot; coolant +${added(e.cAdd,I.uC)}`:""}${e.wAdd!=null?` &middot; water +${added(e.wAdd,I.uW)}`:""}${e.other?` &middot; ${esc(e.other)}`:""}${e.ed?` <span class="hint">(edited)</span>`:""}<div class="btns" style="margin-top:8px"><button type="button" class="btn alt small" id="eEdit">Change it</button></div></div>`;
     $("eEdit").onclick=()=>{ editId=e.id; loadForm(e); renderEntry(); }; $("eCancel").hidden=true; }
-  else $("eDay").innerHTML=isOff(date)?`<div class="daycard off">${DAYN[dow(date)]} is normally a day off, so it prints N/A unless someone logs it. Working today? Log it below.</div>`:"";
+  else $("eDay").innerHTML=isOff(date)?`<div class="daycard off">${hol(date)?esc(hol(date))+" is a paid holiday":DAYN[dow(date)]+" is normally a day off"}, so it prints N/A unless someone logs it. Working today? Log it below.</div>`:"";
   $("eForm").hidden=!!(e&&!editId); badge();
   $("eWkH").innerHTML=`<tr><th>Date</th><th>Sign</th>${COLS.map(t=>`<th>${t}</th>`).join("")}</tr>`;
   const rows=[]; for(let i=0;i<14;i++){ const d=new Date(); d.setDate(d.getDate()-i); const s=ymd(d), en=mid&&entryFor(mid,s);

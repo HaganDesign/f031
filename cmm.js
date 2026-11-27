@@ -112,7 +112,8 @@ const DAYN=["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturda
 const pd=s=>{ const [y,m,d]=s.split("-").map(Number); return new Date(y,m-1,d); };
 const ymd=d=>d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
 const dow=s=>pd(s).getDay();
-const isOff=s=>(I.off||[]).includes(dow(s));
+const hol=s=>(window.shopHoliday?window.shopHoliday(s):"");
+const isOff=s=>(I.off||[]).includes(dow(s))||!!hol(s);
 const entryFor=(mid,date)=>I.entries.find(e=>e.mach===mid&&e.date===date)||null;
 const doneOf=e=>I.tasks.map(t=>(e.done||[]).includes(t));
 const allDone=e=>doneOf(e).every(Boolean);
@@ -126,7 +127,7 @@ function renderTasks(){ $("eTasks").innerHTML=I.tasks.map((t,i)=>`<button type="
   $("eTasks").querySelectorAll(".task").forEach(b=>b.addEventListener("click",()=>{ const t=I.tasks[+b.dataset.i]; picked.has(t)?picked.delete(t):picked.add(t); renderTasks(); })); }
 const firstDay=mid=>I.entries.filter(e=>e.mach===mid).reduce((m,e)=>!m||e.date<m?e.date:m,"");
 function cells(e,date,blankMissed,mid){ if(e) return doneOf(e).map(x=>x?`<td class="ck">&#10003;</td>`:`<td>&mdash;</td>`).join("");
-  if(isOff(date)) return I.tasks.map(()=>`<td>N/A</td>`).join("");
+  if(isOff(date)) return hol(date)?`<td colspan="${I.tasks.length}">${esc(hol(date))} - N/A</td>`:I.tasks.map(()=>`<td>N/A</td>`).join("");
   if(blankMissed&&date<today()&&firstDay(mid)&&date>firstDay(mid)) return `<td colspan="${I.tasks.length}"><span class="miss">missed</span></td>`;
   return I.tasks.map(()=>`<td></td>`).join(""); }
 const shortT=t=>t.split(/\s+/).slice(0,3).join(" ");
@@ -136,7 +137,7 @@ function renderEntry(){ fillMach($("eMach")); const mid=$("eMach").value;
   if(editId){ $("eDay").innerHTML=`<div class="daycard part">Changing the ${DAYN[dow(date)]} ${fmtDate(date)} entry. Tap All done, or tick what was done and Save.</div>`; $("eCancel").hidden=false; }
   else if(e){ $("eDay").innerHTML=`<div class="daycard ${allDone(e)?"done":"part"}"><b>${DAYN[dow(date)]} ${fmtDate(date)} is logged</b> by ${esc(e.sign)}: ${I.tasks.map((t,i)=>`${doneOf(e)[i]?"&#10003;":"&mdash;"} ${esc(shortT(t))}`).join(" &middot; ")}${e.ed?` <span class="hint">(edited)</span>`:""}<div class="btns" style="margin-top:8px"><button type="button" class="btn alt small" id="eEdit">Change it</button></div></div>`;
     $("eEdit").onclick=()=>{ editId=e.id; picked=new Set(e.done||[]); renderTasks(); renderEntry(); }; $("eCancel").hidden=true; }
-  else $("eDay").innerHTML=isOff(date)?`<div class="daycard off">${DAYN[dow(date)]} is normally a day off, so it prints N/A unless someone logs it. Working today? Log it below.</div>`:"";
+  else $("eDay").innerHTML=isOff(date)?`<div class="daycard off">${hol(date)?esc(hol(date))+" is a paid holiday":DAYN[dow(date)]+" is normally a day off"}, so it prints N/A unless someone logs it. Working today? Log it below.</div>`:"";
   $("eForm").hidden=!!(e&&!editId); $("eAll").textContent=editId?"All done ✓ (save change)":"All done ✓";
   renderTasks();
   $("eWkH").innerHTML=`<tr><th>Date</th><th>Sign</th>${I.tasks.map(t=>`<th>${esc(shortT(t))}</th>`).join("")}</tr>`;
